@@ -4,7 +4,7 @@ const cfg=window.GALOIR_CONFIG||{};const ready=cfg.supabaseUrl?.startsWith('http
 const sb=ready?createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,month=new Date(),selectedDate=today;
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,month=new Date(),selectedDate=today;
 const allowed={admin:['dashboard','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','alerts','customers','measurements','daily','tailoring']};
 const titles={dashboard:'Dashboard',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
@@ -36,6 +36,60 @@ function phoneMatches(v){const q=phoneDigits(v);return q.length>=7?customers.fil
 function lastMeasurement(customerId){return measurements.filter(m=>m.customer_id===customerId).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0]||null}
 function initialField(draft,group,name){return esc(draft?.values?.[group+' / '+name]??'')}
 function customerNamePhone(draft){return customers.find(c=>c.id===draft?.customer_id)||null}
+function coloredDateInput(id,value){
+ const raw=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?value:'';
+ const className=id.startsWith('cashierDate-')?'cashierDate':'';
+ return `<div class="colored-date-picker">
+ <input type="hidden" name="delivery_date" id="${esc(id)}" class="${className}" value="${esc(raw)}">
+ <button type="button" class="color-calendar-trigger" data-color-toggle aria-expanded="false" aria-label="Choose delivery date">${raw?esc(outputDate(raw)):'Choose delivery date'} <span aria-hidden="true">▾</span></button>
+ <div class="color-calendar-panel hidden" data-color-panel></div>
+ </div>`;
+}
+function coloredCalendarMonth(year,month,selected){
+ const title=new Date(year,month,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+ const daysInMonth=new Date(year,month+1,0).getDate(),start=new Date(year,month,1).getDay();
+ const cells=Array.from({length:start},()=>'<span class="color-calendar-empty" aria-hidden="true"></span>');
+ for(let d=1;d<=daysInMonth;d++){
+  const date=dateStr(new Date(year,month,d)),weekday=new Date(year,month,d).getDay();
+  const weekend=weekday===0||weekday===6,past=date<today,used=countDate(date);
+  const type=weekend?'weekend':past?'past':used>=capacity?'full':'available';
+  const slots=Math.max(0,capacity-used);
+  const aria=`${outputDate(date)}, ${weekend?'weekend, ':''}${slots} Self Alter slots remaining`;
+  cells.push(`<button type="button" data-color-day="${date}" class="color-calendar-day ${type} ${selected===date?'selected':''}" ${past?'disabled':''} aria-label="${esc(aria)}" title="${esc(aria)}"><b>${d}</b><small>${slots} left</small></button>`);
+ }
+ return `<div class="color-calendar-heading"><button type="button" data-color-nav="-1" aria-label="Previous month">‹</button><strong>${esc(title)}</strong><button type="button" data-color-nav="1" aria-label="Next month">›</button></div>
+ <div class="color-calendar-days">${['S','M','T','W','T','F','S'].map((x,i)=>`<span class="${i===0||i===6?'weekend-label':''}">${x}</span>`).join('')}${cells.join('')}</div>
+ <div class="color-calendar-key"><span class="key green">Available</span><span class="key red">Sat / Sun</span><span class="key amber">Alter full</span><span class="key gray">Past</span></div>
+ <p class="muted">Colors show Self Alter slots. New Make is unlimited; weekends remain bookable.</p>`;
+}
+function bindColoredCalendars(){
+ document.querySelectorAll('.colored-date-picker').forEach(picker=>{
+  const input=picker.querySelector('input[name="delivery_date"]'),trigger=picker.querySelector('[data-color-toggle]'),panel=picker.querySelector('[data-color-panel]');
+  if(!input||!trigger||!panel)return;
+  let pointer=input.value&&/^\d{4}-\d{2}-\d{2}$/.test(input.value)?new Date(input.value+'T12:00:00'):new Date(today+'T12:00:00');
+  const display=()=>{trigger.innerHTML=(input.value?esc(outputDate(input.value)):'Choose delivery date')+' <span aria-hidden="true">▾</span>'};
+  const draw=()=>{
+   panel.innerHTML=coloredCalendarMonth(pointer.getFullYear(),pointer.getMonth(),input.value);
+   panel.querySelectorAll('[data-color-nav]').forEach(b=>b.onclick=()=>{
+    pointer=new Date(pointer.getFullYear(),pointer.getMonth()+Number(b.dataset.colorNav),1);
+    draw();
+   });
+   panel.querySelectorAll('[data-color-day]').forEach(b=>b.onclick=()=>{
+    const date=b.dataset.colorDay;
+    if(date<today)return;
+    input.value=date;display();
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    panel.classList.add('hidden');trigger.setAttribute('aria-expanded','false');
+   });
+  };
+  trigger.onclick=()=>{
+   if(panel.classList.contains('hidden')){
+    if(input.value&&/^\d{4}-\d{2}-\d{2}$/.test(input.value))pointer=new Date(input.value+'T12:00:00');
+    draw();panel.classList.remove('hidden');trigger.setAttribute('aria-expanded','true');
+   }else{panel.classList.add('hidden');trigger.setAttribute('aria-expanded','false')}
+  };
+ });
+}
 function measurementsView(){
  const d=measurements.find(m=>m.id===editingDraftId&&m.workflow_status==='draft')||null;
  const c=customerNamePhone(d);
@@ -60,7 +114,7 @@ function measurementsView(){
   <div><label>Company name</label><input name="company_name" value="${field('company_name')}" maxlength="120"></div>
   <div><label>Reviewed by</label><input name="reviewed_by" value="${field('reviewed_by')}" maxlength="120"></div>
   <div><label>Order date</label><input type="date" name="order_date" value="${d?.order_date||today}"></div>
-  <div><label>Delivery date (optional for draft)</label><input type="date" name="delivery_date" id="slipDate" min="${today}" value="${d?.delivery_date||''}"></div>
+  <div><label>Delivery date (optional for draft)</label>${coloredDateInput('slipDate',d?.delivery_date||'')}</div>
   <div><label>Preparation days</label><input name="days_required" type="number" min="0" max="60" value="${d?.days_required??3}"></div>
   <div><label>Measurements based on</label><select name="ready_body"><option value="body" ${!d||selected('ready_body','body')?'selected':''}>Body</option><option value="ready" ${selected('ready_body','ready')}>Ready</option></select></div>
   <div class="span"><label>Items to deliver</label><div class="actions"><label><input type="checkbox" name="deliver_top" style="width:auto" ${checked('deliver_top')}> Top</label><label><input type="checkbox" name="deliver_bottom" style="width:auto" ${checked('deliver_bottom')}> Bottom</label><label><input type="checkbox" name="deliver_dupatta" style="width:auto" ${checked('deliver_dupatta')}> Dupatta</label></div></div>
@@ -108,7 +162,7 @@ function cashierView(){
   <div><label>Bill number *</label><input name="bill_no" maxlength="100" required></div>
   <div><label>Final Billing Amount (₹) *</label><input name="final_billing_amount" type="number" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${esc(m.final_billing_amount??'')}" required></div>
   <div><label>Outfit / Article *</label><input name="item_name" maxlength="200" value="${esc(m.item_name||'')}" required></div>
-  <div><label>Delivery date *</label><input class="cashierDate" name="delivery_date" type="date" min="${today}" value="${esc(m.delivery_date||'')}" required></div>
+  <div><label>Delivery date *</label>${coloredDateInput('cashierDate-'+m.id,m.delivery_date||'')}</div>
   <div><label>Product Barcode (optional${m.order_type==='new_make'?' for New Make':''})</label><input name="product_barcode" maxlength="120" value="${esc(m.product_barcode||'')}"></div>
   <div><label>Design Number (optional)</label><input name="design_number" maxlength="100" value="${esc(m.design_number||'')}"></div>
   </div><p class="muted">Self Alter slots: ${m.delivery_date?countDate(m.delivery_date):'—'}/${capacity}. New Make is unlimited. Dates are booked on this confirmation.</p>
@@ -121,7 +175,7 @@ function calendarView(){const year=month.getFullYear(),mo=month.getMonth(),first
 <div><label>Customer</label><select name="customer_id" id="bookingCustomer" required>${customerOptions()}</select></div>
 <div><label>Outfit</label><input name="item_name" required maxlength="200"></div>
 <div><label>Order type</label><select name="order_type" id="bookingType">${makeOptions()}</select></div>
-<div><label>Delivery date</label><input type="date" name="delivery_date" id="bookingDate" min="${today}" value="${selectedDate}" required></div>
+<div><label>Delivery date</label>${coloredDateInput('bookingDate',selectedDate)}</div>
 <div><label>Measurement slip (optional)</label><select name="measurement_id" id="bookingMeasurement"><option value="">None</option></select></div>
 <div><label>Preparation days</label><input name="days_required" type="number" min="0" max="60" value="3" required></div>
 <div class="span"><label>Booking notes</label><textarea name="notes"></textarea></div>
@@ -149,6 +203,7 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
   try{
    const day=String(f.get('delivery_date')||''),bill=String(f.get('bill_no')||'').trim(),item=String(f.get('item_name')||'').trim();
    if(!bill)throw Error('Enter the bill number to complete billing');
+   if(!day||day<today)throw Error('Select a valid delivery date from the colored calendar');
    const amountText=String(f.get('final_billing_amount')||'').trim();
    const finalAmount=Number(amountText);
    if(!/^\d+(?:\.\d{1,2})?$/.test(amountText)||!Number.isFinite(finalAmount)||finalAmount<=0||finalAmount>9999999999.99)
@@ -412,7 +467,7 @@ async function startBarcodeScan(){
   }
  }catch(err){stopBarcodeScan();if(msg)msg.textContent='Camera scanner unavailable: '+(err?.message||err)+'. You can enter or scan the barcode manually.'}
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
 on('slipPhone','input',()=>{if($('forceNewCustomerValue'))$('forceNewCustomerValue').value='false';updatePhoneLookup()});
 on('slipPhone','blur',()=>{const matches=phoneMatches($('slipPhone')?.value);if(matches.length===1&&!editingDraftId&&$('forceNewCustomerValue')?.value!=='true')refillLastMeasurements(matches[0].id)});
 on('slipCustomerSelect','change',e=>refillLastMeasurements(e.target.value));
@@ -486,7 +541,7 @@ on('measurementForm','submit',async e=>{
 });
 on('prevMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()-1,1);render()});on('nextMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()+1,1);render()});document.querySelectorAll('[data-date]').forEach(el=>el.onclick=()=>{selectedDate=el.dataset.date;render()});
 const bookingCustomer=$('bookingCustomer'),bookingMeasurement=$('bookingMeasurement');if(bookingCustomer&&bookingMeasurement){const update=()=>{bookingMeasurement.innerHTML='<option value="">None</option>'+measurements.filter(m=>m.customer_id===bookingCustomer.value&&m.order_type===$('bookingType')?.value&&(!m.delivery_date||m.delivery_date===$('bookingDate')?.value)).map(m=>`<option value="${m.id}">${esc(m.slip_no||new Date(m.created_at).toLocaleString())}</option>`).join('')};bookingCustomer.onchange=update;if($('bookingType'))$('bookingType').onchange=()=>{update();updateOverrideVisibility('booking')};if($('bookingDate'))$('bookingDate').onchange=()=>{update();updateOverrideVisibility('booking')};update()}
-on('bookingForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target),type=f.get('order_type'),date=f.get('delivery_date');try{const override=await getOverrideForBooking(f,type,date);const {error:bookError}=await sb.rpc('book_order_v3',{p_customer_id:f.get('customer_id'),p_measurement_id:f.get('measurement_id')||null,p_item_name:f.get('item_name'),p_delivery_date:date,p_order_type:type,p_notes:f.get('notes'),p_days_required:Number(f.get('days_required')),p_override_token:override});if(bookError)throw bookError;notify('Delivery booked');await refresh()}catch(err){error(err)}});
+on('bookingForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target),type=f.get('order_type'),date=f.get('delivery_date');try{if(!date||date<today)throw Error('Select a valid delivery date');const override=await getOverrideForBooking(f,type,date);const {error:bookError}=await sb.rpc('book_order_v3',{p_customer_id:f.get('customer_id'),p_measurement_id:f.get('measurement_id')||null,p_item_name:f.get('item_name'),p_delivery_date:date,p_order_type:type,p_notes:f.get('notes'),p_days_required:Number(f.get('days_required')),p_override_token:override});if(bookError)throw bookError;notify('Delivery booked');await refresh()}catch(err){error(err)}});
 on('dailyDate','change',e=>{selectedDate=e.target.value;render()});document.querySelectorAll('[data-status]').forEach(el=>el.onchange=async()=>{try{const {error:x}=await sb.rpc('set_order_status',{p_order_id:el.dataset.status,p_status:el.value});if(x)throw x;notify('Status updated');await refresh()}catch(x){error(x)}});
 on('capacityForm','submit',async e=>{e.preventDefault();try{const {error:x}=await sb.rpc('set_capacity',{p_capacity:Number(new FormData(e.target).get('capacity'))});if(x)throw x;notify('Capacity updated');await refresh()}catch(x){error(x)}});
 on('addSalespersonForm','submit',async e=>{e.preventDefault();const name=String(new FormData(e.target).get('full_name')||'').trim();if(!name)return notify('Enter salesperson name');try{const {error:x}=await sb.from('salespeople').insert({full_name:name});if(x)throw x;notify('Salesperson added');await refresh()}catch(x){error(x)}});
