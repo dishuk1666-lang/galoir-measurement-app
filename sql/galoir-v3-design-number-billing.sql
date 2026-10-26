@@ -142,7 +142,7 @@ begin
  return jsonb_build_object('measurement_id',v_id,'slip_no',v_slip,
                            'customer_id',v_customer,'workflow_status','draft');
 end;
-$function$
+$function$;
 
 
 -- Cashier can finalize billing while adding/updating the design number. Existing billing RPC remains for older clients.
@@ -204,7 +204,7 @@ begin
  return jsonb_build_object('slip_no',v_slip.slip_no,'measurement_id',p_measurement_id,
                           'order_id',v_order_id,'workflow_status','billed');
 end;
-$function$
+$function$;
 
 REVOKE ALL ON FUNCTION public.finalize_slip_billing_v2(uuid,text,text,date,text,text,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.finalize_slip_billing_v2(uuid,text,text,date,text,text,text) TO authenticated;
