@@ -125,6 +125,74 @@ async function uploadMedia(id,kind,file){const mime=String(file.type||'').split(
 async function openPrivateMedia(m,kind){const path=kind==='photo'?m.photo_path:m.voice_path;if(!path)return notify('No attachment found');const win=window.open('about:blank','_blank');try{const {data,error:e}=await sb.storage.from('galoir-measurement-media').createSignedUrl(path,300);if(e)throw e;if(win)win.location.href=data.signedUrl;else notify('Enable pop-ups to open media')}catch(err){if(win)win.close();error(err)}}
 async function printSlip(m){if(m.workflow_status!=='billed'||!m.bill_no)return notify('Complete billing before printing this slip');const win=window.open('','_blank');if(!win)return notify('Please allow pop-ups to print the slip');try{const c=customers.find(x=>x.id===m.customer_id),o=orders.find(x=>x.measurement_id===m.id);let photoURL='';if(m.photo_path){const {data}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.photo_path,300);photoURL=data?.signedUrl||''}const block=(title,items)=>`<section><h3>${esc(title)} (inches)</h3><div class="print-grid">${items.map(name=>`<div><span>${esc(name)}</span><strong>${esc(m.values?.[title+' / '+name]??'—')}</strong></div>`).join('')}</div></section>`;const fields=[['Customer',c?.full_name],['Contact',c?.phone],['Bill No.',m.bill_no],['Product Barcode',m.product_barcode],['Company',m.company_name],['Order Date',outputDate(m.order_date)],['Delivery Date',outputDate(m.delivery_date)],['Type',m.order_type==='new_make'?'New Make':'Self Alter'],['Outfit',m.item_name],['Salesperson',m.salesperson_name],['Reviewed By',m.reviewed_by],['READY / BODY',m.ready_body],['Lehenga / Sharara',m.lehenga_style],['Bottom style',m.bottom_style],['Preparation days',m.days_required],['CRM Ready',o?.is_ready?'Yes':'No'],['Top / Bottom / Dupatta',[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean).join(', ')||'—']];const doc=`<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.slip_no||'GALOIR Slip')}</title><style>body{font:12px Arial,sans-serif;color:#171717;max-width:740px;margin:15px auto}h1{font-size:32px;margin:0}h2{font-size:18px;margin:3px 0 10px}h3{background:#eee;padding:7px;margin:12px 0 6px}.print-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}.print-grid>div{border-bottom:1px dotted #aaa;padding:7px;display:flex;justify-content:space-between;gap:12px}.print-grid span{color:#555}.remark{white-space:pre-wrap;border:1px solid #bbb;min-height:42px;padding:9px}.photo{max-height:150px;max-width:200px;object-fit:contain}.title{display:flex;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:10px}footer{margin-top:16px;color:#555;font-size:10px}@page{size:A4;margin:12mm}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print slip</button><div class="title"><div><h1>GALOIR</h1><div>J-79, Rajouri Garden Main Market, New Delhi-110027</div></div><div style="text-align:right"><h2>TAILOR ORDER SLIP</h2><strong style="font-size:20px">${esc(m.slip_no||'—')}</strong></div></div><div class="print-grid">${fields.map(([k,v])=>`<div><span>${esc(k)}</span><strong>${esc(v??'—')}</strong></div>`).join('')}</div>${Object.entries(measureGroups).map(([title,items])=>block(title,items)).join('')}<h3>Remarks</h3><div class="remark">${esc(m.remarks||'—')}</div><h3>Fitting instructions</h3><div class="remark">${esc(m.fitting_notes||'—')}</div>${photoURL?`<h3>Reference photo</h3><img class="photo" src="${esc(photoURL)}">`:''}<footer>Voice note ${m.voice_path?'attached digitally':'not attached'} · GALOIR Measurement Studio</footer></body></html>`;win.document.open();win.document.write(doc);win.document.close();win.focus()}catch(err){win.close();error(err)}}
 async function startRecording(){if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)return notify('Voice recording is unsupported in this browser');try{recordingStream=await navigator.mediaDevices.getUserMedia({audio:true});const type=['audio/mp4','audio/webm','audio/ogg'].find(x=>MediaRecorder.isTypeSupported(x));activeRecorder=new MediaRecorder(recordingStream,type?{mimeType:type}:undefined);const chunks=[];activeRecorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};activeRecorder.onstop=()=>{const mime=String(activeRecorder.mimeType||type||'audio/webm').split(';')[0];recordedAudio=new Blob(chunks,{type:mime});recordingStream?.getTracks().forEach(t=>t.stop());recordingStream=null;if($('voiceStatus'))$('voiceStatus').textContent='Voice note captured ('+Math.ceil(recordedAudio.size/1024)+' KB)';if($('recordVoice'))$('recordVoice').disabled=false;if($('stopVoice'))$('stopVoice').disabled=true};activeRecorder.start();if($('voiceStatus'))$('voiceStatus').textContent='Recording…';$('recordVoice').disabled=true;$('stopVoice').disabled=false}catch(err){recordingStream?.getTracks().forEach(t=>t.stop());recordingStream=null;error(err)}}
+function updatePhoneLookup(){
+ const phone=$('slipPhone'),select=$('slipCustomerSelect'),existing=$('existingCustomerBox'),fresh=$('newCustomerBox'),name=$('slipNewCustomerName'),status=$('phoneLookupStatus'),button=$('forceNewCustomer'),mode=$('forceNewCustomerValue');
+ if(!phone||!select||!existing||!fresh||!name||!status||!mode)return;
+ const matches=phoneMatches(phone.value);
+ const forceNew=mode.value==='true';
+ const before=select.value;
+ select.innerHTML=matches.map(c=>`<option value="${esc(c.id)}">${esc(c.full_name)} · ${esc(c.phone)}</option>`).join('');
+ const editing=measurements.find(m=>m.id===editingDraftId);
+ if(matches.some(c=>c.id===before))select.value=before;
+ else if(editing&&matches.some(c=>c.id===editing.customer_id))select.value=editing.customer_id;
+ if(matches.length&&!forceNew){
+  existing.classList.remove('hidden');fresh.classList.add('hidden');name.required=false;
+  status.textContent=matches.length===1?'Existing customer found — previous measurements available':`${matches.length} customer records match this phone. Choose the correct name.`;
+ }else{
+  existing.classList.add('hidden');fresh.classList.remove('hidden');name.required=!!phone.value.trim();select.innerHTML='';
+  status.textContent=phoneDigits(phone.value).length>=7?'No customer selected — enter a new customer name':'Enter at least 7 digits to search or add a customer';
+ }
+ if(button)button.textContent=forceNew&&matches.length?'Use existing customer':'Add new customer';
+}
+function refillLastMeasurements(customerId){
+ if(!customerId)return;
+ const m=lastMeasurement(customerId);if(!m)return;
+ const form=$('measurementForm');if(!form)return;
+ Object.entries(m.values||{}).forEach(([key,val])=>{const el=form.elements.namedItem('m_'+key);if(el)el.value=String(val??'')});
+ const keys=['company_name','reviewed_by','ready_body','lehenga_style','bottom_style','fitting_notes','remarks'];
+ keys.forEach(k=>{const el=form.elements.namedItem(k);if(el&&m[k]!=null)el.value=String(m[k])});
+ for(const key of ['deliver_top','deliver_bottom','deliver_dupatta']){const el=form.elements.namedItem(key);if(el)el.checked=!!m[key]}
+ if($('phoneLookupStatus'))$('phoneLookupStatus').textContent='Previous measurement details loaded from '+(m.slip_no||'last visit')+'. Review or change the values before saving.';
+}
+let barcodeControls=null,barcodeStream=null,barcodeSession=0;
+function stopBarcodeScan(){
+ ++barcodeSession;
+ try{barcodeControls?.stop?.()}catch(_){}
+ barcodeControls=null;
+ barcodeStream?.getTracks?.().forEach(t=>t.stop());barcodeStream=null;
+ const video=$('barcodeVideo');if(video){try{video.pause()}catch(_){}video.srcObject=null;video.classList.add('hidden')}
+ $('stopBarcodeScan')?.classList.add('hidden');
+}
+async function startBarcodeScan(){
+ const video=$('barcodeVideo'),target=$('slipBarcode'),msg=$('barcodeScanStatus');if(!video||!target)return;
+ stopBarcodeScan();const session=++barcodeSession;
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera unavailable. Type barcode or use a handheld scanner.');
+  video.classList.remove('hidden');$('stopBarcodeScan')?.classList.remove('hidden');
+  if(window.BarcodeDetector){
+   barcodeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+   if(session!==barcodeSession){barcodeStream?.getTracks().forEach(t=>t.stop());return}
+   video.srcObject=barcodeStream;await video.play();
+   const scanner=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','upc_a','upc_e','qr_code','itf']});
+   if(msg)msg.textContent='Point the camera at the barcode';
+   async function detect(){
+    if(session!==barcodeSession||!video.isConnected)return;
+    try{const found=await scanner.detect(video);if(found?.length&&found[0].rawValue){
+      target.value=String(found[0].rawValue).slice(0,120);stopBarcodeScan();if(msg)msg.textContent='Barcode scanned successfully';return;
+    }}catch(_){}
+    if(session===barcodeSession)requestAnimationFrame(detect);
+   }
+   detect();
+  }else{
+   if(msg)msg.textContent='Opening camera scanner…';
+   const zxing=await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/+esm');
+   if(session!==barcodeSession)return;
+   const reader=new zxing.BrowserMultiFormatReader();
+   barcodeControls=await reader.decodeFromVideoDevice(undefined,video,(result)=>{if(session!==barcodeSession)return;if(result){target.value=String(result.getText()).slice(0,120);stopBarcodeScan();if(msg)msg.textContent='Barcode scanned successfully'}});
+   if(msg&&session===barcodeSession)msg.textContent='Point the camera at the barcode';
+  }
+ }catch(err){stopBarcodeScan();if(msg)msg.textContent='Camera scanner unavailable: '+(err?.message||err)+'. You can enter or scan the barcode manually.'}
+}
 function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);on('stopVoice','click',()=>{if(activeRecorder?.state==='recording')activeRecorder.stop()});updateOverrideVisibility('slip');updateOverrideVisibility('booking');
 on('customerForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target);try{const {error:x}=await sb.from('customers').insert({full_name:f.get('full_name'),phone:f.get('phone'),notes:f.get('notes'),created_by:me.id});if(x)throw x;notify('Customer saved');await refresh()}catch(x){error(x)}});
 on('searchCustomers','input',e=>{$('customerRows').innerHTML=customerTable(customers.filter(c=>(c.full_name+' '+c.phone).toLowerCase().includes(e.target.value.toLowerCase())))});
