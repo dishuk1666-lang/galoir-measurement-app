@@ -66,6 +66,14 @@ function measurementsView(){
   <div class="span"><label>Remarks / Alteration details</label><textarea name="remarks" rows="4">${field('remarks')}</textarea></div>
   <div class="span"><label>Fitting instructions</label><textarea name="fitting_notes" rows="2">${field('fitting_notes')}</textarea></div>
   <div><label>Take photo / upload image</label><input type="file" name="photo_file" accept="image/*" capture="environment"><p class="muted">Optional private image, up to 15 MB</p></div>
+  <div class="span"><label>Outfit / fitting video (optional)</label>
+   <div class="fields">
+     <div><label>Upload video from device</label><input type="file" name="video_file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v"></div>
+     <div><label>Record a new video</label><input type="file" name="video_camera" accept="video/*" capture="environment"></div>
+   </div>
+   <p class="muted">Choose one video (maximum 40 MB). Private to authorized staff and linked to this measurement slip.</p>
+   ${d?.video_path?`<button type="button" class="btn alt" data-media="${esc(d.id)}" data-kind="video">View saved video</button>`:''}
+  </div>
   <div><label>Voice remarks</label><div class="actions"><button type="button" class="btn alt" id="recordVoice">● Record</button><button type="button" class="btn alt" id="stopVoice" disabled>Stop</button></div><p id="voiceStatus" class="muted">No new voice note recorded</p></div>
  </div>
  <div class="actions"><button class="btn" id="saveSlipBtn">Save Draft${d?' '+esc(d.slip_no):' — Reserve GL Slip No.'}</button>${d?'<button type="button" class="btn alt" id="cancelDraftEdit">New slip instead</button>':''}</div>
@@ -79,7 +87,7 @@ function measurementTable(rows){
   const c=customers.find(x=>x.id===m.customer_id);
   const isBilled=m.workflow_status==='billed'&&Boolean(m.bill_no);
   return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(c?.phone||'')}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">${esc(m.product_barcode||'No barcode')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
-  ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
+  ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}${m.video_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="video">Video</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
  }).join('')}</table>`;
 }
 function cashierView(){
@@ -150,8 +158,39 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
 }
 function updateOverrideVisibility(prefix){const type=$(prefix==='slip'?'slipType':'bookingType')?.value,date=$(prefix==='slip'?'slipDate':'bookingDate')?.value,panel=$(prefix+'Override');if(panel)panel.classList.toggle('hidden',!(type==='self_alter'&&date&&countDate(date)>=capacity))}
 async function getOverrideForBooking(formData,type,date){if(type!=='self_alter'||countDate(date)<capacity)return null;const email=String(formData.get('reviewer_email')||'').trim(),password=String(formData.get('reviewer_password')||'');if(!email||!password)throw Error('Self Alter date is full — Admin/Manager login email and password required');const reviewer=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'galoir-one-time-supervisor'}});try{const {error:e}=await reviewer.auth.signInWithPassword({email,password});if(e)throw Error('Supervisor password incorrect or account unavailable');const {data,error:issueError}=await reviewer.rpc('issue_booking_override',{p_delivery_date:date});if(issueError)throw Error('Only an active Admin or Manager can authorize: '+issueError.message);return data}finally{try{await reviewer.auth.signOut({scope:'local'})}catch(_){}}}
-async function uploadMedia(id,kind,file){const mime=String(file.type||'').split(';')[0].toLowerCase();const supported={photo:{'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/heic':'heic','image/heif':'heif'},voice:{'audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','audio/ogg':'ogg','audio/wav':'wav','audio/x-m4a':'m4a','video/mp4':'mp4'}};const ext=supported[kind]?.[mime];if(!ext)throw Error('Unsupported '+kind+' format '+mime);if(file.size>15728640)throw Error('Maximum file size is 15 MB');const path=id+'/'+kind+'-'+crypto.randomUUID()+'.'+ext;const {error:upError}=await sb.storage.from('galoir-measurement-media').upload(path,file,{contentType:mime,upsert:false});if(upError)throw upError;const {error:attachError}=await sb.rpc('attach_measurement_media',{p_measurement_id:id,p_kind:kind,p_path:path});if(attachError)throw attachError;return path}
-async function openPrivateMedia(m,kind){const path=kind==='photo'?m.photo_path:m.voice_path;if(!path)return notify('No attachment found');const win=window.open('about:blank','_blank');try{const {data,error:e}=await sb.storage.from('galoir-measurement-media').createSignedUrl(path,300);if(e)throw e;if(win)win.location.href=data.signedUrl;else notify('Enable pop-ups to open media')}catch(err){if(win)win.close();error(err)}}
+async function uploadMedia(id,kind,file){
+ let mime=String(file.type||'').split(';')[0].toLowerCase();
+ const supported={
+  photo:{'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/heic':'heic','image/heif':'heif'},
+  voice:{'audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','audio/ogg':'ogg','audio/wav':'wav','audio/x-m4a':'m4a','video/mp4':'mp4'},
+  video:{'video/mp4':'mp4','video/quicktime':'mov','video/webm':'webm','video/x-m4v':'m4v'}
+ };
+ if(kind==='video'&&!mime){
+  const extension=String(file.name||'').split('.').pop().toLowerCase();
+  mime={mp4:'video/mp4',mov:'video/quicktime',webm:'video/webm',m4v:'video/x-m4v'}[extension]||'';
+ }
+ const ext=supported[kind]?.[mime];
+ if(!ext)throw Error('Unsupported '+kind+' format '+(mime||'unknown'));
+ const limit=kind==='video'?41943040:15728640;
+ if(file.size>limit)throw Error('Maximum '+kind+' size is '+(kind==='video'?'40 MB':'15 MB'));
+ const path=id+'/'+kind+'-'+crypto.randomUUID()+'.'+ext;
+ const {error:upError}=await sb.storage.from('galoir-measurement-media').upload(path,file,{contentType:mime,upsert:false});
+ if(upError)throw upError;
+ const {error:attachError}=await sb.rpc('attach_measurement_media',{p_measurement_id:id,p_kind:kind,p_path:path});
+ if(attachError)throw attachError;
+ return path;
+}
+async function openPrivateMedia(m,kind){
+ const path=kind==='photo'?m.photo_path:kind==='voice'?m.voice_path:kind==='video'?m.video_path:null;
+ if(!path)return notify('No attachment found');
+ const win=window.open('about:blank','_blank');
+ try{
+  const {data,error:e}=await sb.storage.from('galoir-measurement-media').createSignedUrl(path,kind==='video'?900:300);
+  if(e)throw e;
+  if(win)win.location.href=data.signedUrl;
+  else notify('Enable pop-ups to open media');
+ }catch(err){if(win)win.close();error(err)}
+}
 async function printSlip(m){
  if(m.workflow_status!=='billed'||!m.bill_no)return notify('Complete billing before printing this slip');
  const win=window.open('','_blank');
@@ -193,7 +232,7 @@ async function printSlip(m){
    ${blocks}
    <div class="notes"><div><h3>Remarks</h3><div class="note">${esc(m.remarks||'—')}</div></div><div><h3>Fitting Instructions</h3><div class="note">${esc(m.fitting_notes||'—')}</div></div></div>
    ${photoURL?`<div style="margin-top:6px"><b>Reference photo</b> <img class="photo" id="refPhoto" src="${esc(photoURL)}"></div>`:''}
-   <footer>Voice note ${m.voice_path?'attached digitally':'not attached'} · GALOIR Measurement Studio</footer>
+   <footer>Voice note ${m.voice_path?'attached digitally':'not attached'} · Video ${m.video_path?'attached digitally':'not attached'} · GALOIR Measurement Studio</footer>
   </article></main></body></html>`;
   win.document.open();win.document.write(doc);win.document.close();
   const fit=()=>{
@@ -300,8 +339,19 @@ on('measurementForm','submit',async e=>{
  const f=new FormData(e.target),values={};
  for(const [group,items] of Object.entries(measureGroups)){for(const name of items){const key=group+' / '+name,v=String(f.get('m_'+key)||'').trim();if(v)values[key]=v}}
  const photo=f.get('photo_file');
+ const deviceVideo=f.get('video_file'),cameraVideo=f.get('video_camera');
+ const videoSelections=[deviceVideo,cameraVideo].filter(file=>file instanceof File&&file.size>0);
+ if(videoSelections.length>1)return notify('Select one video: upload or record');
+ const video=videoSelections[0]||null;
  if(photo instanceof File&&photo.size>15728640)return notify('Photo exceeds 15 MB');
  if(recordedAudio?.size>15728640)return notify('Voice note exceeds 15 MB');
+ if(video?.size>41943040)return notify('Video exceeds the 40 MB upload limit');
+ if(video){
+  const supported=['video/mp4','video/quicktime','video/webm','video/x-m4v'];
+  const mime=String(video.type||'').toLowerCase().split(';')[0];
+  const extension=String(video.name||'').toLowerCase().split('.').pop();
+  if(!supported.includes(mime)&&!(mime===''&&['mp4','mov','webm','m4v'].includes(extension)))return notify('Please choose an MP4, MOV or WebM video');
+ }
  const payload={
  customer_phone:f.get('customer_phone'),
  customer_id:f.get('customer_id')||null,
@@ -331,6 +381,7 @@ on('measurementForm','submit',async e=>{
   const warning=[];
   if(photo instanceof File&&photo.size){try{await uploadMedia(data.measurement_id,'photo',photo)}catch(x){warning.push('Photo: '+x.message)}}
   if(recordedAudio?.size){try{await uploadMedia(data.measurement_id,'voice',recordedAudio)}catch(x){warning.push('Voice: '+x.message)}}
+  if(video?.size){try{await uploadMedia(data.measurement_id,'video',video)}catch(x){warning.push('Video: '+x.message)}}
   recordedAudio=null;editingDraftId=null;
   notify('Draft '+data.slip_no+' saved'+(warning.length?'; attachment issue: '+warning.join('; '):'')+'. Complete billing before printing.');
   await refresh();
