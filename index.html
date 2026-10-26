@@ -65,4 +65,34 @@
 .slip-number-value{display:block;margin-top:4px;font-size:clamp(22px,3vw,29px);line-height:1.15;font-weight:850;letter-spacing:.4px;color:#201d1a;overflow-wrap:anywhere}
 .slip-number-help{font-size:12px;color:#554d44;margin:0;max-width:320px;line-height:1.4}
 @media(max-width:600px){.slip-number-banner{padding:13px 14px}.slip-number-help{max-width:100%}}
+
+/* Desktop: keep GALOIR branding fixed while left navigation scrolls independently */
+@media (min-width:951px){
+  #app aside{
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    height:100dvh;
+    overflow:hidden;
+  }
+  #app aside h1,
+  #app aside small{flex-shrink:0}
+  #app aside nav{
+    display:block;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    padding-right:5px;
+    scrollbar-width:thin;
+    scrollbar-color:#baa998 #302a26;
+    scrollbar-gutter:stable;
+    overscroll-behavior-y:contain;
+  }
+  #app aside nav::-webkit-scrollbar{width:9px}
+  #app aside nav::-webkit-scrollbar-track{background:#302a26;border-radius:8px}
+  #app aside nav::-webkit-scrollbar-thumb{background:#8f7f6f;border:2px solid #302a26;border-radius:8px}
+  #app aside nav::-webkit-scrollbar-thumb:hover{background:#baa998}
+  #app aside nav button{display:block}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
