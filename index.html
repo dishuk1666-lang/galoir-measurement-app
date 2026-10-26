@@ -12,4 +12,17 @@
 #measurementForm button{margin-top:4px}
 @media(max-width:950px){.panel.span .fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.panel.span .fields{grid-template-columns:1fr}}
+
+/* GALOIR calendar: open dates green; weekends always red, even when Alter slots remain */
+.day.available{background:#e0f5e5;border:2px solid #50a765;color:#17552b}
+.day.available small{color:#225c35}
+.day.full:not(.weekend){background:#fff0d2;border:2px solid #d6a347;color:#764f0d}
+.day.full:not(.weekend) small{color:#764f0d}
+.day.past:not(.weekend){background:#edebe8;border-color:#d3d0c9;color:#77716c}
+.day.past:not(.weekend) small{color:#77716c}
+.day.weekend{background:#ffe2e2!important;border:2px solid #d75d65!important;color:#972633!important}
+.day.weekend small{color:#972633!important}
+.weekend-heading{font-weight:750;color:#af2632}
+.day.selected{outline:3px solid #292521;outline-offset:1px}
+.day:focus-visible{outline:3px solid #14518d;outline-offset:2px}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
