@@ -142,14 +142,21 @@ function measurementTable(rows){
  return `<p class="muted">${list.length} slips shown${rows.length>200?' (search to find older records)':''}</p><table><tr><th>Slip / Stage</th><th>Customer / Phone</th><th>Outfit / Design / Barcode</th><th>Salesperson</th><th>Delivery</th><th>Bill</th><th>Final Amount (₹)</th><th>Actions</th></tr>${list.map(m=>{
   const c=customers.find(x=>x.id===m.customer_id);
   const isBilled=m.workflow_status==='billed'&&Boolean(m.bill_no);
+  const deletable=role==='admin'&&m.workflow_status==='draft'&&!String(m.bill_no||'').trim()&&!orders.some(o=>o.measurement_id===m.id);
   return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(c?.phone||'')}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
+  ${deletable?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Draft</button>`:''}
   ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}${m.video_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="video">Video</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
  }).join('')}</table>`;
 }
 function cashierView(){
  const drafts=measurements.filter(m=>m.workflow_status==='draft').sort((a,b)=>a.created_at.localeCompare(b.created_at));
  const billed=measurements.filter(m=>m.workflow_status==='billed'&&m.bill_no).sort((a,b)=>b.billed_at?.localeCompare(a.billed_at||'')||0).slice(0,60);
- return `<div class="panel"><h3>Cashier Billing Desk · ${drafts.length} draft slip${drafts.length===1?'':'s'} waiting</h3><p class="muted">Sales can save half-filled slips. The cashier must enter the final billing amount, bill number and remaining delivery details before confirming. The amount is kept for internal records and never appears on the tailor printout. Only billed slips can be printed. This desk works with the common Sales login or Admin login.</p>${drafts.length?drafts.map(m=>{
+ const justBilled=measurements.find(m=>m.id===lastBilledSlipId&&m.workflow_status==='billed'&&m.bill_no);
+ return `${justBilled?`<div class="panel billing-success" id="billingSuccess">
+ <h3>Billing complete — ${esc(justBilled.slip_no)}</h3>
+ <p>Bill No. <strong>${esc(justBilled.bill_no)}</strong> was saved and the delivery was booked successfully.</p>
+ <button type="button" class="btn" data-print="${esc(justBilled.id)}">Print Tailor Slip Now</button>
+ </div>`:''}<div class="panel"><h3>Cashier Billing Desk · ${drafts.length} draft slip${drafts.length===1?'':'s'} waiting</h3><p class="muted">Sales can save half-filled slips. The cashier must enter the final billing amount, bill number and remaining delivery details before confirming. The amount is kept for internal records and never appears on the tailor printout. Only billed slips can be printed. This desk works with the common Sales login or Admin login.</p>${drafts.length?drafts.map(m=>{
   const c=customers.find(x=>x.id===m.customer_id),full=m.order_type==='self_alter'&&m.delivery_date&&countDate(m.delivery_date)>=capacity;
   return `<div class="panel"><h3>Slip ${esc(m.slip_no)} — Ready for Billing</h3>
   <div class="fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:18px;padding:14px;background:#f4f2ee;border-radius:10px">
@@ -158,7 +165,9 @@ function cashierView(){
    <div><label>Order Type</label><strong>${m.order_type==='new_make'?'New Make':'Self Alter'}</strong></div>
    <div><label>Design Number</label><strong>${esc(m.design_number||'Not entered')}</strong></div>
   </div>
-  <form class="cashierForm" data-slip-id="${esc(m.id)}"><div class="fields">
+  <form class="cashierForm" data-slip-id="${esc(m.id)}">
+  <p class="muted">Enter the bill number and final amount, then confirm. The Print Tailor Slip button appears immediately afterward.</p>
+  <div class="fields">
   <div><label>Bill number *</label><input name="bill_no" maxlength="100" required></div>
   <div><label>Final Billing Amount (₹) *</label><input name="final_billing_amount" type="number" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${esc(m.final_billing_amount??'')}" required></div>
   <div><label>Outfit / Article *</label><input name="item_name" maxlength="200" value="${esc(m.item_name||'')}" required></div>
@@ -167,7 +176,8 @@ function cashierView(){
   <div><label>Design Number (optional)</label><input name="design_number" maxlength="100" value="${esc(m.design_number||'')}"></div>
   </div><p class="muted">Self Alter slots: ${m.delivery_date?countDate(m.delivery_date):'—'}/${capacity}. New Make is unlimited. Dates are booked on this confirmation.</p>
   <div class="panel cashierOverride ${full?'':'hidden'}"><h3>Full-date authorization</h3><p class="muted">Enter the Admin or Manager email and password for one extra Self Alter booking.</p><div class="fields"><div><label>Supervisor email</label><input name="reviewer_email" type="email" autocomplete="off"></div><div><label>Supervisor password</label><input name="reviewer_password" type="password" autocomplete="off"></div></div></div>
-  <button type="submit" class="btn">Confirm Billing & Book Delivery</button><button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Complete measurements first</button>
+  <button type="submit" class="btn">Confirm Billing & Enable Print</button><button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Complete measurements first</button>
+  ${role==='admin'&&!String(m.bill_no||'').trim()&&!orders.some(o=>o.measurement_id===m.id)?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Unbilled Draft</button>`:''}
   </form></div>`;
  }).join(''):'<p>No drafts waiting for billing.</p>'}</div><div class="panel"><h3>Billed Slips · Ready to print</h3>${billed.length?`<table><tr><th>Slip</th><th>Customer / Phone</th><th>Order Type</th><th>Bill No.</th><th>Design No.</th><th>Barcode</th><th>Final Amount (₹)</th><th>Print</th></tr>${billed.map(m=>{const c=customers.find(x=>x.id===m.customer_id);return `<tr><td>${esc(m.slip_no)}</td><td>${esc(c?.full_name||'—')}<br><span class="muted">${esc(c?.phone||'—')}</span></td><td>${m.order_type==='new_make'?'New Make':'Self Alter'}</td><td>${esc(m.bill_no)}</td><td>${esc(m.design_number||'—')}</td><td>${esc(m.product_barcode||'—')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><button class="btn" type="button" data-print="${esc(m.id)}">Print Tailor Slip</button></td></tr>`}).join('')}</table>`:'<p class="muted">No billed slips yet.</p>'}</div>`;
 }
@@ -188,9 +198,41 @@ function salespeopleView(){const rows=salespeople.slice().sort((a,b)=>a.full_nam
 function staffView(){return `<div class="panel"><h3>Manage existing Supabase users</h3><p class="muted">For one common Sales login, create a Supabase Authentication user, then copy its User UID and assign the Sales role here. Manage employees' individual names separately under Salespeople.</p><form id="staffForm"><div class="fields"><div><label>Full name</label><input name="full_name" required></div><div><label>Supabase Auth User UID</label><input name="user_id" required></div><div><label>Role</label><select name="role"><option value="sales">Sales</option><option value="tailoring">Tailoring</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div></div><button class="btn">Save Staff Role</button></form></div><div class="panel"><h3>Staff access</h3><table><tr><th>Name / Email</th><th>Role</th><th>Active</th><th>Action</th></tr>${profiles.map(p=>`<tr><td>${esc(p.full_name)}<br><span class="muted">${esc(p.email)}</span></td><td><select data-role="${p.id}">${['sales','tailoring','manager','admin'].map(r=>`<option value="${r}" ${p.role===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type="checkbox" data-active="${p.id}" ${p.active?'checked':''} style="width:auto"></td><td><button class="btn alt" data-save-staff="${p.id}">Save</button></td></tr>`).join('')}</table></div>`}
 function reportsView(){return `<div class="grid">${[['Total customers',customers.length],['Total orders',orders.length],['Delivered',orders.filter(o=>o.status==='delivered').length],['Open',orders.filter(o=>o.status!=='delivered').length]].map(x=>`<div class="card"><div class="muted">${x[0]}</div><div class="stat">${x[1]}</div></div>`).join('')}</div>`}
 async function staffCall(payload){const p=payload.action==='update'?profiles.find(x=>x.id===payload.id):null;const {error:e}=await sb.rpc('admin_set_staff',{p_user_id:payload.action==='update'?payload.id:payload.user_id,p_role:payload.role,p_full_name:p?p.full_name:payload.full_name,p_active:payload.action==='update'?payload.active:true});if(e)throw e;return {ok:true}}
+async function deleteUnbilledDraft(m){
+ if(role!=='admin'||m.workflow_status!=='draft'||String(m.bill_no||'').trim()||orders.some(o=>o.measurement_id===m.id)){
+  return notify('Only Admin can delete slips that have no bill number or delivery booking');
+ }
+ if(!window.confirm('Permanently delete '+(m.slip_no||'this slip')+' and all attached photos, voice notes and videos? This cannot be undone.'))return;
+ const bucket=sb.storage.from('galoir-measurement-media');
+ try{
+  // Delete actual files through the Storage API to avoid orphaned objects.
+  let empty=false;
+  for(let i=0;i<100;i++){
+    const {data:files,error:listError}=await bucket.list(m.id,{limit:100,offset:0});
+    if(listError)throw listError;
+    if(!files||files.length===0){empty=true;break}
+    const paths=files.filter(x=>x.name&&x.id).map(x=>m.id+'/'+x.name);
+    if(paths.length!==files.length)throw Error('Unexpected storage folder contents; deletion stopped');
+    const {error:removeError}=await bucket.remove(paths);
+    if(removeError)throw removeError;
+  }
+  if(!empty)throw Error('Too many attachments to delete automatically');
+  const {data:deletedSlip,error:deleteError}=await sb.rpc('admin_delete_unbilled_slip',{p_measurement_id:m.id});
+  if(deleteError)throw deleteError;
+  if(editingDraftId===m.id)editingDraftId=null;
+  await refresh();
+  notify('Deleted unbilled measurement slip '+(deletedSlip||m.slip_no));
+ }catch(e){error(e)}
+}
 function bindSharedActions(){document.querySelectorAll('[data-ready-id]').forEach(el=>el.onchange=async()=>{const checked=el.checked;try{const {error:e}=await sb.rpc('set_order_ready',{p_order_id:el.dataset.readyId,p_ready:checked});if(e)throw e;notify(checked?'Outfit marked READY':'Outfit marked NOT READY');await refresh()}catch(x){el.checked=!checked;error(x)}});document.querySelectorAll('[data-supplier-id]').forEach(el=>el.onclick=async()=>{const o=orders.find(x=>x.id===el.dataset.supplierId);try{const {error:e}=await sb.rpc('set_supplier_informed',{p_order_id:el.dataset.supplierId,p_informed:!o?.supplier_notified_at});if(e)throw e;notify(o?.supplier_notified_at?'Supplier follow-up reopened':'Supplier informed');await refresh()}catch(x){error(x)}});document.querySelectorAll('[data-print]').forEach(el=>el.onclick=()=>{const m=measurements.find(x=>x.id===el.dataset.print);if(m)printSlip(m).catch(error)});document.querySelectorAll('[data-media]').forEach(el=>el.onclick=()=>{const m=measurements.find(x=>x.id===el.dataset.media);if(m)openPrivateMedia(m,el.dataset.kind)});
 document.querySelectorAll('[data-edit-draft]').forEach(el=>el.onclick=()=>{const draft=measurements.find(m=>m.id===el.dataset.editDraft);if(!draft||draft.workflow_status!=='draft')return;editingDraftId=draft.id;tab='measurements';render();window.scrollTo({top:0,behavior:'smooth'})});
 document.querySelectorAll('[data-open-cashier]').forEach(el=>el.onclick=()=>{tab='cashier';render();document.querySelector('[data-slip-id="'+el.dataset.openCashier+'"]')?.scrollIntoView({behavior:'smooth',block:'center'})});
+document.querySelectorAll('[data-delete-draft]').forEach(el=>el.onclick=async()=>{
+ const draft=measurements.find(m=>m.id===el.dataset.deleteDraft);
+ if(!draft)return;
+ el.disabled=true;
+ try{await deleteUnbilledDraft(draft)}finally{if(el.isConnected)el.disabled=false}
+});
 document.querySelectorAll('.cashierForm').forEach(form=>{
  const id=form.dataset.slipId,m=measurements.find(x=>x.id===id);
  if(!m)return;
@@ -220,9 +262,11 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
     p_override_token:approval
    });
    if(billError)throw billError;
-   notify(data.slip_no+' billed and delivery booked. Use Print Tailor Slip below.');
+   lastBilledSlipId=data.measurement_id;
    editingDraftId=null;
    await refresh();
+   $('billingSuccess')?.scrollIntoView({behavior:'smooth',block:'start'});
+   notify(data.slip_no+' billed successfully — Print Tailor Slip is ready at the top.');
   }catch(err){error(err)}finally{if(submit&&submit.isConnected)submit.disabled=false}
  });
 });
