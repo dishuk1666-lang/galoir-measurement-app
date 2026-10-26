@@ -58,4 +58,11 @@
 .billing-success .btn{margin-top:8px;font-weight:750}
 .btn.danger-outline{background:#fff;color:#9b3035;border:1px solid #d89ba0}
 @media(max-width:430px){.color-calendar-panel{padding:10px 5px}.color-calendar-days{gap:2px}.color-calendar-day{min-height:40px;font-size:12px}.color-calendar-day small{font-size:8px}}
+
+/* Prominent assigned GL measurement slip number on all devices */
+.slip-number-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px;background:#f3f0e9;border:1.5px solid #b2a797;border-left:5px solid #5f5246;border-radius:10px;padding:15px 18px;margin:12px 0 18px}
+.slip-number-label{display:block;letter-spacing:1.1px;font-size:11px;font-weight:800;color:#61574d}
+.slip-number-value{display:block;margin-top:4px;font-size:clamp(22px,3vw,29px);line-height:1.15;font-weight:850;letter-spacing:.4px;color:#201d1a;overflow-wrap:anywhere}
+.slip-number-help{font-size:12px;color:#554d44;margin:0;max-width:320px;line-height:1.4}
+@media(max-width:600px){.slip-number-banner{padding:13px 14px}.slip-number-help{max-width:100%}}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
