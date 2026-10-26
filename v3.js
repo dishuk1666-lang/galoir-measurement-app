@@ -36,16 +36,16 @@ function phoneMatches(v){const q=phoneDigits(v);return q.length>=7?customers.fil
 function lastMeasurement(customerId){return measurements.filter(m=>m.customer_id===customerId).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0]||null}
 function initialField(draft,group,name){return esc(draft?.values?.[group+' / '+name]??'')}
 function customerNamePhone(draft){return customers.find(c=>c.id===draft?.customer_id)||null}
-function coloredDateInput(id,value){
+function coloredDateInput(id,value,allowPast=false){
  const raw=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?value:'';
  const className=id.startsWith('cashierDate-')?'cashierDate':'';
- return `<div class="colored-date-picker">
+ return `<div class="colored-date-picker" data-allow-past="${allowPast?'true':'false'}">
  <input type="hidden" name="delivery_date" id="${esc(id)}" class="${className}" value="${esc(raw)}">
  <button type="button" class="color-calendar-trigger" data-color-toggle aria-expanded="false" aria-label="Choose delivery date">${raw?esc(outputDate(raw)):'Choose delivery date'} <span aria-hidden="true">▾</span></button>
  <div class="color-calendar-panel hidden" data-color-panel></div>
  </div>`;
 }
-function coloredCalendarMonth(year,month,selected){
+function coloredCalendarMonth(year,month,selected,allowPast=false){
  const title=new Date(year,month,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
  const daysInMonth=new Date(year,month+1,0).getDate(),start=new Date(year,month,1).getDay();
  const cells=Array.from({length:start},()=>'<span class="color-calendar-empty" aria-hidden="true"></span>');
@@ -55,7 +55,7 @@ function coloredCalendarMonth(year,month,selected){
   const type=weekend?'weekend':past?'past':used>=capacity?'full':'available';
   const slots=Math.max(0,capacity-used);
   const aria=`${outputDate(date)}, ${weekend?'weekend, ':''}${slots} Self Alter slots remaining`;
-  cells.push(`<button type="button" data-color-day="${date}" class="color-calendar-day ${type} ${selected===date?'selected':''}" ${past?'disabled':''} aria-label="${esc(aria)}" title="${esc(aria)}"><b>${d}</b><small>${slots} left</small></button>`);
+  cells.push(`<button type="button" data-color-day="${date}" class="color-calendar-day ${type} ${selected===date?'selected':''}" ${past&&!allowPast?'disabled':''} aria-label="${esc(aria)}" title="${esc(aria)}"><b>${d}</b><small>${slots} left</small></button>`);
  }
  return `<div class="color-calendar-heading"><button type="button" data-color-nav="-1" aria-label="Previous month">‹</button><strong>${esc(title)}</strong><button type="button" data-color-nav="1" aria-label="Next month">›</button></div>
  <div class="color-calendar-days">${['S','M','T','W','T','F','S'].map((x,i)=>`<span class="${i===0||i===6?'weekend-label':''}">${x}</span>`).join('')}${cells.join('')}</div>
@@ -64,19 +64,19 @@ function coloredCalendarMonth(year,month,selected){
 }
 function bindColoredCalendars(){
  document.querySelectorAll('.colored-date-picker').forEach(picker=>{
-  const input=picker.querySelector('input[name="delivery_date"]'),trigger=picker.querySelector('[data-color-toggle]'),panel=picker.querySelector('[data-color-panel]');
+  const input=picker.querySelector('input[name="delivery_date"]'),trigger=picker.querySelector('[data-color-toggle]'),panel=picker.querySelector('[data-color-panel]'),allowPast=picker.dataset.allowPast==='true';
   if(!input||!trigger||!panel)return;
   let pointer=input.value&&/^\d{4}-\d{2}-\d{2}$/.test(input.value)?new Date(input.value+'T12:00:00'):new Date(today+'T12:00:00');
   const display=()=>{trigger.innerHTML=(input.value?esc(outputDate(input.value)):'Choose delivery date')+' <span aria-hidden="true">▾</span>'};
   const draw=()=>{
-   panel.innerHTML=coloredCalendarMonth(pointer.getFullYear(),pointer.getMonth(),input.value);
+   panel.innerHTML=coloredCalendarMonth(pointer.getFullYear(),pointer.getMonth(),input.value,allowPast);
    panel.querySelectorAll('[data-color-nav]').forEach(b=>b.onclick=()=>{
     pointer=new Date(pointer.getFullYear(),pointer.getMonth()+Number(b.dataset.colorNav),1);
     draw();
    });
    panel.querySelectorAll('[data-color-day]').forEach(b=>b.onclick=()=>{
     const date=b.dataset.colorDay;
-    if(date<today)return;
+    if(!allowPast&&date<today)return;
     input.value=date;display();
     input.dispatchEvent(new Event('change',{bubbles:true}));
     panel.classList.add('hidden');trigger.setAttribute('aria-expanded','false');
@@ -190,7 +190,7 @@ function calendarView(){const year=month.getFullYear(),mo=month.getMonth(),first
 <div><label>Preparation days</label><input name="days_required" type="number" min="0" max="60" value="3" required></div>
 <div class="span"><label>Booking notes</label><textarea name="notes"></textarea></div>
 </div>${overrideFields('booking')}<button class="btn" ${!customers.length||selectedDate<today?'disabled':''}>Book delivery</button></form>`:'<p>Read-only calendar.</p>'}</div><div class="panel"><h3>Scheduled outfits</h3>${ordersTable(orders.filter(o=>o.delivery_date===selectedDate))}</div>`}
-function dailyView(){return `<div class="panel"><h3>Daily delivery list</h3><div class="actions"><label>Choose date <input id="dailyDate" type="date" value="${selectedDate}"></label></div>${ordersTable(orders.filter(o=>o.delivery_date===selectedDate))}</div><div class="panel"><h3>Overdue and pending work</h3>${ordersTable(orders.filter(o=>o.delivery_date<today&&o.status!=='delivered'))}</div>`}
+function dailyView(){return `<div class="panel"><h3>Daily delivery list</h3><div class="actions"><div style="width:min(370px,100%)"><label>Choose delivery date</label>${coloredDateInput('dailyDate',selectedDate,true)}</div></div>${ordersTable(orders.filter(o=>o.delivery_date===selectedDate))}</div><div class="panel"><h3>Overdue and pending work</h3>${ordersTable(orders.filter(o=>o.delivery_date<today&&o.status!=='delivered'))}</div>`}
 function tailoringView(){const statuses=['pending','stitching','trial','alteration','ready','delivered'];return `<div class="panel"><h3>Update tailoring progress</h3><table><tr><th>Customer</th><th>Outfit</th><th>Due</th><th>Status</th></tr>${orders.filter(o=>o.status!=='delivered').map(o=>`<tr><td>${esc(customerName(o.customer_id))}</td><td>${esc(o.item_name)}</td><td>${esc(o.delivery_date)}</td><td><select data-status="${o.id}">${statuses.map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')}</table></div>`}
 function settingsView(){return `<div class="panel"><h3>Self Alter daily capacity</h3><p>Current limit: <strong>${capacity} Self Alter outfits per day</strong>. New Make is unlimited. Over-capacity Self Alter bookings require a new Admin/Manager password approval per booking.</p><form id="capacityForm"><label>Self Alter daily limit</label><input name="capacity" type="number" min="1" max="1000" value="${capacity}" required style="max-width:220px"><p><button class="btn">Save capacity</button></p></form></div>`}
 function salespersonOptions(){return salespeople.filter(s=>s.active).slice().sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(s=>`<option value="${esc(s.full_name)}">${esc(s.full_name)}</option>`).join('')}
