@@ -192,64 +192,128 @@ async function openPrivateMedia(m,kind){
  }catch(err){if(win)win.close();error(err)}
 }
 async function printSlip(m){
- if(m.workflow_status!=='billed'||!m.bill_no)return notify('Complete billing before printing this slip');
- const win=window.open('','_blank');
- if(!win)return notify('Please allow pop-ups to print the slip');
- try{
-  const c=customers.find(x=>x.id===m.customer_id),o=orders.find(x=>x.measurement_id===m.id);
-  let photoURL='';
-  if(m.photo_path){
-   const {data}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.photo_path,300);
-   photoURL=data?.signedUrl||'';
-  }
-  const deliver=[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean).join(', ');
-  const meta=[['Customer',c?.full_name],['Phone',c?.phone],['Bill No.',m.bill_no],['Barcode',m.product_barcode],['Company',m.company_name],['Order Date',outputDate(m.order_date)],['Delivery Date',outputDate(m.delivery_date)],['Type',m.order_type==='new_make'?'New Make':'Self Alter'],['Outfit',m.item_name],['Salesperson',m.salesperson_name],['Reviewed By',m.reviewed_by],['Size Basis',m.ready_body],['Preparation Days',m.days_required],['CRM Ready',o?.is_ready?'Yes':'No'],['Deliver',deliver||'—']];
-  const blocks=Object.entries(measureGroups).map(([title,items])=>`<section><h3>${esc(title)} (inches)</h3><div class="measure-grid">${items.map(name=>`<div><span>${esc(name)}</span><strong>${esc(m.values?.[title+' / '+name]??'—')}</strong></div>`).join('')}</div></section>`).join('');
-  const doc=`<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.slip_no||'GALOIR Slip')}</title>
-  <style>
-  *{box-sizing:border-box}html,body{margin:0;padding:0;color:#171717;background:white;font-family:Arial,sans-serif}
-  .toolbar{text-align:center;background:#eee;padding:10px}.toolbar button{padding:10px 18px;border:0;background:#292521;color:white;border-radius:5px}
-  #page{width:196mm;margin:0 auto;position:relative}
-  #sheet{width:196mm;font-size:9px;line-height:1.2;transform-origin:top left}
-  .header{border-bottom:2px solid #222;padding:4px 1px 7px;display:flex;justify-content:space-between;gap:10px}
-  .logo{font-size:25px;letter-spacing:1px;font-weight:bold}.address{font-size:8px;margin-top:3px}
-  .meta,.measure-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 8px}
-  .meta{margin:5px 0}.meta>div,.measure-grid>div{display:flex;gap:4px;justify-content:space-between;align-items:baseline;padding:3px 2px;border-bottom:1px dotted #c6c6c6;min-width:0}
-  .meta span,.measure-grid span{color:#555;flex-shrink:0}
-  .meta strong,.measure-grid strong{overflow-wrap:anywhere;text-align:right}
-  section{margin:5px 0;break-inside:avoid}section h3{font-size:10px;background:#ececec;margin:3px 0 2px;padding:4px 6px}
-  .notes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:7px}
-  .notes h3{font-size:9px;margin:0 0 3px}
-  .note{padding:5px;border:1px solid #ccc;min-height:30px;white-space:pre-wrap;overflow-wrap:anywhere}
-  .photo{max-width:145px;max-height:95px;object-fit:contain}
-  footer{font-size:8px;color:#666;border-top:1px solid #ddd;padding-top:3px;margin-top:7px}
-  @page{size:A4 portrait;margin:7mm}
-  @media print{html,body{margin:0!important;padding:0!important;width:196mm}.toolbar{display:none!important}#page{margin:0;width:196mm}#sheet{width:196mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body><div class="toolbar"><button id="printNow">Print A4 Tailor Slip</button></div>
-  <main id="page"><article id="sheet">
-   <div class="header"><div><div class="logo">GALOIR</div><div class="address">J-79, Rajouri Garden Main Market, New Delhi-110027</div></div><div style="text-align:right"><b>TAILOR ORDER SLIP</b><div style="font-size:17px;font-weight:bold">${esc(m.slip_no||'—')}</div></div></div>
-   <div class="meta">${meta.map(([key,val])=>`<div><span>${esc(key)}</span><strong>${esc(val??'—')}</strong></div>`).join('')}</div>
-   ${blocks}
-   <div class="notes"><div><h3>Remarks</h3><div class="note">${esc(m.remarks||'—')}</div></div><div><h3>Fitting Instructions</h3><div class="note">${esc(m.fitting_notes||'—')}</div></div></div>
-   ${photoURL?`<div style="margin-top:6px"><b>Reference photo</b> <img class="photo" id="refPhoto" src="${esc(photoURL)}"></div>`:''}
-   <footer>Voice note ${m.voice_path?'attached digitally':'not attached'} · Video ${m.video_path?'attached digitally':'not attached'} · GALOIR Measurement Studio</footer>
-  </article></main></body></html>`;
-  win.document.open();win.document.write(doc);win.document.close();
-  const fit=()=>{
-   const sheet=win.document.getElementById('sheet'),page=win.document.getElementById('page');
-   if(!sheet||!page)return;
-   sheet.style.transform='none';
-   const height=sheet.scrollHeight;
-   const maxHeight=283/25.4*96-16;
-   const scale=Math.min(1,maxHeight/Math.max(1,height));
-   sheet.style.transform=`scale(${scale})`;
-   page.style.height=`${Math.ceil(height*scale)+3}px`;
-  };
-  win.document.getElementById('printNow').onclick=()=>{fit();win.focus();win.print()};
-  win.addEventListener('beforeprint',fit);
-  win.document.getElementById('refPhoto')?.addEventListener('load',fit);
-  fit();
- }catch(e){win.close();error(e)}
+  if(m.workflow_status!=='billed'||!m.bill_no)return notify('Complete billing before printing this slip');
+  const win=window.open('','_blank');
+  if(!win)return notify('Please allow pop-ups to print the slip');
+  try{
+    const customer=customers.find(x=>x.id===m.customer_id);
+    const order=orders.find(x=>x.measurement_id===m.id);
+    let photoURL='';
+    if(m.photo_path){
+      const {data}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.photo_path,300);
+      photoURL=data?.signedUrl||'';
+    }
+    const displayValue=v=>{
+      if(v===null||v===undefined)return '';
+      const value=String(v).trim();
+      return value===''||value==='0'||value==='0.0'||value==='0.00'?'':value;
+    };
+    const deliver=[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean).join(', ');
+    const details=[
+      ['Customer',customer?.full_name],['Phone',customer?.phone],['Bill No.',m.bill_no],
+      ['Product Barcode',m.product_barcode],['Delivery Date',outputDate(m.delivery_date)],
+      ['Order Date',outputDate(m.order_date)],['Order Type',m.order_type==='new_make'?'New Make':'Self Alter'],
+      ['Outfit',m.item_name],['Salesperson',m.salesperson_name],['Company',m.company_name],
+      ['Reviewed By',m.reviewed_by],['Size Basis',m.ready_body],
+      ['Preparation Days',m.days_required],['CRM Ready',order?.is_ready?'Yes':'No'],['Deliver',deliver]
+    ];
+    const groups=Object.entries(measureGroups).map(([title,items])=>{
+      const rows=Math.ceil(items.length/2);
+      return `<section class="measure-section" style="--rows:${rows}">
+        <h3>${esc(title)} — INCHES</h3>
+        <div class="measure-grid">${items.map(name=>`
+          <div class="measure-cell">
+            <span class="measure-name">${esc(name)}</span>
+            <strong class="measure-value">${esc(displayValue(m.values?.[title+' / '+name]))}</strong>
+          </div>`).join('')}
+        </div>
+      </section>`;
+    }).join('');
+    const doc=`<!doctype html><html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>GALOIR Tailor Slip — ${esc(m.slip_no||'')}</title>
+    <style>
+      *{box-sizing:border-box}
+      html,body{margin:0;padding:0;background:#ececec;color:#171717;font-family:Arial,Helvetica,sans-serif}
+      .print-toolbar{padding:13px;text-align:center}
+      .print-toolbar button{border:0;border-radius:7px;padding:11px 24px;background:#25211e;color:#fff;font-size:15px;cursor:pointer}
+      #printPage{width:194mm;height:279mm;overflow:hidden;background:#fff;margin:0 auto 22px;box-shadow:0 2px 18px #0002}
+      #printSheet{width:194mm;height:279mm;display:flex;flex-direction:column;gap:8px;padding:0 1mm;
+        font-size:14px;line-height:1.22;transform-origin:top left}
+      .slip-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
+        padding:4px 3px 10px;border-bottom:2px solid #292521}
+      .brand{font-size:30px;font-weight:800;letter-spacing:1px}
+      .address{font-size:11px;line-height:1.4}
+      .slip-title{text-align:right;font-size:13px;font-weight:700}
+      .slip-number{font-size:23px;font-weight:850;margin-top:4px}
+      .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 9px}
+      .detail{display:flex;justify-content:space-between;align-items:baseline;gap:5px;
+        border-bottom:1px dotted #b7b7b7;min-width:0;min-height:29px;padding:6px 2px}
+      .detail-label{font-size:12px;color:#4e4e4e;flex:0 0 auto}
+      .detail-value{font-size:14px;font-weight:700;text-align:right;overflow-wrap:anywhere;min-width:0}
+      .measurement-sections{display:flex;flex-direction:column;flex:1 1 auto;gap:9px;min-height:0}
+      .measure-section{display:flex;flex-direction:column;flex:var(--rows) 1 auto;break-inside:avoid;min-height:0}
+      .measure-section h3{font-size:15px;font-weight:800;margin:0;background:#dedede;
+        padding:7px 10px;letter-spacing:.2px}
+      .measure-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+        grid-auto-rows:minmax(29px,1fr);column-gap:15px;flex:1 1 auto}
+      .measure-cell{display:grid;grid-template-columns:42% minmax(0,1fr);align-items:center;
+        gap:7px;border-bottom:1px dotted #aaa;padding:4px 9px;min-width:0}
+      .measure-name{font-size:14px;font-weight:550;overflow-wrap:anywhere}
+      .measure-value{font-size:18px;font-weight:800;text-align:right;overflow-wrap:anywhere;min-width:0}
+      .remarks-area{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:140px}
+      .remark-panel{display:flex;flex-direction:column;min-width:0}
+      .remark-panel h3{font-size:15px;margin:0 0 5px;font-weight:800}
+      .remark-box{flex:1;border:1px solid #aaa;padding:10px;min-height:115px;
+        white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;font-weight:650;line-height:1.35}
+      .media-line{display:flex;align-items:center;gap:10px;font-size:11px}
+      .reference-photo{width:auto;max-width:120px;max-height:90px;object-fit:contain}
+      .print-footer{padding-top:5px;border-top:1px solid #bbb;font-size:10px;color:#444}
+      @page{size:A4 portrait;margin:8mm}
+      @media print{
+        html,body{width:194mm;margin:0!important;padding:0!important;background:#fff!important}
+        .print-toolbar{display:none!important}
+        #printPage{width:194mm;height:279mm;margin:0;box-shadow:none;overflow:hidden}
+        #printSheet{width:194mm;height:279mm}
+        body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      }
+    </style></head><body>
+    <div class="print-toolbar"><button type="button" id="printNow">Print A4 Tailor Slip</button></div>
+    <main id="printPage"><article id="printSheet">
+      <header class="slip-header">
+        <div><div class="brand">GALOIR</div>
+          <div class="address">J-79, Rajouri Garden Main Market, New Delhi-110027</div></div>
+        <div class="slip-title">TAILOR ORDER SLIP<div class="slip-number">${esc(m.slip_no||'—')}</div></div>
+      </header>
+      <div class="order-details">${details.map(([key,value])=>`
+        <div class="detail"><span class="detail-label">${esc(key)}</span>
+        <strong class="detail-value">${esc(displayValue(value))}</strong></div>`).join('')}</div>
+      <div class="measurement-sections">${groups}</div>
+      <div class="remarks-area">
+        <div class="remark-panel"><h3>REMARKS</h3><div class="remark-box">${esc(displayValue(m.remarks))}</div></div>
+        <div class="remark-panel"><h3>FITTING INSTRUCTIONS</h3><div class="remark-box">${esc(displayValue(m.fitting_notes))}</div></div>
+      </div>
+      ${photoURL?`<div class="media-line"><strong>REFERENCE PHOTO</strong>
+        <img class="reference-photo" id="refPhoto" src="${esc(photoURL)}" alt="Outfit reference"></div>`:''}
+      <footer class="print-footer">Voice note: ${m.voice_path?'Attached digitally':'None'}
+        · Video: ${m.video_path?'Attached digitally':'None'}
+        · GALOIR Measurement Studio</footer>
+    </article></main></body></html>`;
+    win.document.open();win.document.write(doc);win.document.close();
+    function fitPage(){
+      const sheet=win.document.getElementById('printSheet');
+      if(!sheet)return;
+      sheet.style.transform='none';
+      const usableHeightPx=279/25.4*96;
+      const naturalHeight=sheet.scrollHeight;
+      const scale=Math.min(1,(usableHeightPx-4)/Math.max(naturalHeight,1));
+      sheet.style.transform='scale('+scale+')';
+    }
+    win.document.getElementById('printNow').onclick=()=>{fitPage();win.focus();win.print()};
+    win.addEventListener('beforeprint',fitPage);
+    win.document.getElementById('refPhoto')?.addEventListener('load',fitPage);
+    fitPage();
+  }catch(e){win.close();error(e)}
 }
 async function startRecording(){if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)return notify('Voice recording is unsupported in this browser');try{recordingStream=await navigator.mediaDevices.getUserMedia({audio:true});const type=['audio/mp4','audio/webm','audio/ogg'].find(x=>MediaRecorder.isTypeSupported(x));activeRecorder=new MediaRecorder(recordingStream,type?{mimeType:type}:undefined);const chunks=[];activeRecorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};activeRecorder.onstop=()=>{const mime=String(activeRecorder.mimeType||type||'audio/webm').split(';')[0];recordedAudio=new Blob(chunks,{type:mime});recordingStream?.getTracks().forEach(t=>t.stop());recordingStream=null;if($('voiceStatus'))$('voiceStatus').textContent='Voice note captured ('+Math.ceil(recordedAudio.size/1024)+' KB)';if($('recordVoice'))$('recordVoice').disabled=false;if($('stopVoice'))$('stopVoice').disabled=true};activeRecorder.start();if($('voiceStatus'))$('voiceStatus').textContent='Recording…';$('recordVoice').disabled=true;$('stopVoice').disabled=false}catch(err){recordingStream?.getTracks().forEach(t=>t.stop());recordingStream=null;error(err)}}
 function updatePhoneLookup(){
