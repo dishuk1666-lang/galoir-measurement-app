@@ -98,7 +98,14 @@ function measurementsView(){
  const checked=(key)=>d?.[key]?'checked':'';
  const ready=salespeople.some(s=>s.active);
  return `${can('measurements')?`<div class="panel">
- <h3>${d?'Continue draft '+esc(d.slip_no):'New GALOIR Measurement Slip'}</h3>
+ <h3>${d?'Continue Measurement Slip':'New GALOIR Measurement Slip'}</h3>
+ <div class="slip-number-banner" id="slipNoBanner" role="status" aria-live="polite">
+  <div>
+   <span class="slip-number-label">SLIP NUMBER</span>
+   <strong class="slip-number-value" id="slipNoDisplay">${d?esc(d.slip_no):'Pending'}</strong>
+  </div>
+  <p class="slip-number-help">${d?'Unique GL number saved with this customer.':'A unique GL number is assigned automatically when you press Save Draft.'}</p>
+ </div>
  <p class="muted">Find by phone to reuse customer details and last measurements, or add a new customer. Save at any point. <strong>Drafts do not reserve a delivery slot</strong> until the cashier enters a bill number and confirms booking.</p>
  <form id="measurementForm"><div class="fields">
   <div><label>Customer phone number *</label><input id="slipPhone" type="tel" name="customer_phone" value="${esc(c?.phone||'')}" autocomplete="tel" required maxlength="30"></div>
@@ -578,9 +585,10 @@ on('measurementForm','submit',async e=>{
   if(photo instanceof File&&photo.size){try{await uploadMedia(data.measurement_id,'photo',photo)}catch(x){warning.push('Photo: '+x.message)}}
   if(recordedAudio?.size){try{await uploadMedia(data.measurement_id,'voice',recordedAudio)}catch(x){warning.push('Voice: '+x.message)}}
   if(video?.size){try{await uploadMedia(data.measurement_id,'video',video)}catch(x){warning.push('Video: '+x.message)}}
-  recordedAudio=null;editingDraftId=null;
-  notify('Draft '+data.slip_no+' saved'+(warning.length?'; attachment issue: '+warning.join('; '):'')+'. Complete billing before printing.');
+  recordedAudio=null;editingDraftId=data.measurement_id;
   await refresh();
+  $('slipNoBanner')?.scrollIntoView({behavior:'smooth',block:'start'});
+  notify('Slip '+data.slip_no+' saved. The GL number is displayed above.'+(warning.length?' Attachment issue: '+warning.join('; '):'')+' Complete billing before printing.');
  }catch(err){error(err)}finally{if($('saveSlipBtn'))$('saveSlipBtn').disabled=false}
 });
 on('prevMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()-1,1);render()});on('nextMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()+1,1);render()});document.querySelectorAll('[data-date]').forEach(el=>el.onclick=()=>{selectedDate=el.dataset.date;render()});
