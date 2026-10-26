@@ -193,11 +193,61 @@ async function startBarcodeScan(){
   }
  }catch(err){stopBarcodeScan();if(msg)msg.textContent='Camera scanner unavailable: '+(err?.message||err)+'. You can enter or scan the barcode manually.'}
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);on('stopVoice','click',()=>{if(activeRecorder?.state==='recording')activeRecorder.stop()});updateOverrideVisibility('slip');updateOverrideVisibility('booking');
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
+on('slipPhone','input',()=>{if($('forceNewCustomerValue'))$('forceNewCustomerValue').value='false';updatePhoneLookup()});
+on('slipPhone','blur',()=>{const matches=phoneMatches($('slipPhone')?.value);if(matches.length===1&&!editingDraftId&&$('forceNewCustomerValue')?.value!=='true')refillLastMeasurements(matches[0].id)});
+on('slipCustomerSelect','change',e=>refillLastMeasurements(e.target.value));
+on('forceNewCustomer','click',()=>{const input=$('forceNewCustomerValue');if(!input)return;input.value=input.value==='true'?'false':'true';updatePhoneLookup()});
+on('startBarcodeScan','click',startBarcodeScan);
+on('stopBarcodeScan','click',stopBarcodeScan);
+on('cancelDraftEdit','click',()=>{editingDraftId=null;recordedAudio=null;render()});
+updatePhoneLookup();on('stopVoice','click',()=>{if(activeRecorder?.state==='recording')activeRecorder.stop()});updateOverrideVisibility('slip');updateOverrideVisibility('booking');
 on('customerForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target);try{const {error:x}=await sb.from('customers').insert({full_name:f.get('full_name'),phone:f.get('phone'),notes:f.get('notes'),created_by:me.id});if(x)throw x;notify('Customer saved');await refresh()}catch(x){error(x)}});
 on('searchCustomers','input',e=>{$('customerRows').innerHTML=customerTable(customers.filter(c=>(c.full_name+' '+c.phone).toLowerCase().includes(e.target.value.toLowerCase())))});
-on('searchMeasurements','input',e=>{const term=e.target.value.toLowerCase().trim();$('measurementRows').innerHTML=measurementTable(measurements.filter(m=>{const c=customers.find(x=>x.id===m.customer_id);return `${c?.full_name||''} ${c?.phone||''} ${m.fitting_notes||''} ${m.salesperson_name||''} ${m.slip_no||''} ${m.remarks||''} ${m.bill_no||''} ${m.item_name||''}`.toLowerCase().includes(term)}))});
-on('measurementForm','submit',async e=>{e.preventDefault();const form=e.target,f=new FormData(form),vals={};for(const [group,items] of Object.entries(measureGroups)){for(const name of items){const k=group+' / '+name,v=f.get('m_'+k);if(v!==''&&v!==null)vals[k]=Number(v)}}const salesperson=String(f.get('salesperson_name')||'').trim();if(!salespeople.some(s=>s.active&&s.full_name===salesperson))return notify('Choose an active salesperson');if(activeRecorder?.state==='recording')return notify('Stop the voice recording before saving');const photo=f.get('photo_file');if(photo instanceof File&&photo.size>15728640)return notify('Photo exceeds the 15 MB limit');if(recordedAudio&&recordedAudio.size>15728640)return notify('Voice note exceeds the 15 MB limit');const payload={customer_id:f.get('customer_id'),salesperson_name:salesperson,order_type:f.get('order_type'),item_name:f.get('item_name'),bill_no:f.get('bill_no'),company_name:f.get('company_name'),reviewed_by:f.get('reviewed_by'),order_date:f.get('order_date'),delivery_date:f.get('delivery_date'),days_required:Number(f.get('days_required')),ready_body:f.get('ready_body'),lehenga_style:f.get('lehenga_style'),bottom_style:f.get('bottom_style'),deliver_top:f.has('deliver_top'),deliver_bottom:f.has('deliver_bottom'),deliver_dupatta:f.has('deliver_dupatta'),values:vals,remarks:f.get('remarks'),fitting_notes:f.get('fitting_notes')};const button=$('saveSlipBtn');button.disabled=true;try{const override=await getOverrideForBooking(f,payload.order_type,payload.delivery_date);const {data,error:saveError}=await sb.rpc('create_measurement_slip_and_booking',{p_payload:payload,p_override_token:override});if(saveError)throw saveError;lastCreated=data.measurement_id;const warnings=[];if(photo instanceof File&&photo.size){try{await uploadMedia(data.measurement_id,'photo',photo)}catch(err){warnings.push('photo: '+err.message)}}if(recordedAudio?.size){try{await uploadMedia(data.measurement_id,'voice',recordedAudio)}catch(err){warnings.push('voice: '+err.message)}}recordedAudio=null;notify('Slip '+data.slip_no+' saved and delivery booked'+(warnings.length?'; media issue: '+warnings.join('; '):''));await refresh()}catch(err){error(err)}finally{if($('saveSlipBtn'))$('saveSlipBtn').disabled=false}});
+on('searchMeasurements','input',e=>{const term=e.target.value.toLowerCase().trim();$('measurementRows').innerHTML=measurementTable(measurements.filter(m=>{const c=customers.find(x=>x.id===m.customer_id);return `${c?.full_name||''} ${c?.phone||''} ${m.fitting_notes||''} ${m.salesperson_name||''} ${m.slip_no||''} ${m.remarks||''} ${m.bill_no||''} ${m.item_name||''} ${m.product_barcode||''} ${customers.find(x=>x.id===m.customer_id)?.phone||''}`.toLowerCase().includes(term)}))});
+on('measurementForm','submit',async e=>{
+ e.preventDefault();
+ if(activeRecorder?.state==='recording')return notify('Stop voice recording before saving the draft');
+ stopBarcodeScan();
+ const f=new FormData(e.target),values={};
+ for(const [group,items] of Object.entries(measureGroups)){for(const name of items){const key=group+' / '+name,v=String(f.get('m_'+key)||'').trim();if(v)values[key]=v}}
+ const photo=f.get('photo_file');
+ if(photo instanceof File&&photo.size>15728640)return notify('Photo exceeds 15 MB');
+ if(recordedAudio?.size>15728640)return notify('Voice note exceeds 15 MB');
+ const payload={
+ customer_phone:f.get('customer_phone'),
+ customer_id:f.get('customer_id')||null,
+ customer_name:f.get('customer_name')||'',
+ force_new_customer:f.get('force_new_customer')==='true',
+ salesperson_name:f.get('salesperson_name')||'',
+ order_type:f.get('order_type')||'new_make',
+ item_name:f.get('item_name')||'',
+ product_barcode:f.get('product_barcode')||'',
+ company_name:f.get('company_name')||'',
+ reviewed_by:f.get('reviewed_by')||'',
+ order_date:f.get('order_date')||today,
+ delivery_date:f.get('delivery_date')||null,
+ days_required:Number(f.get('days_required')||3),
+ ready_body:f.get('ready_body')||'body',
+ lehenga_style:f.get('lehenga_style')||'',
+ bottom_style:f.get('bottom_style')||'',
+ deliver_top:f.has('deliver_top'),
+ deliver_bottom:f.has('deliver_bottom'),
+ deliver_dupatta:f.has('deliver_dupatta'),
+ values,remarks:f.get('remarks')||'',fitting_notes:f.get('fitting_notes')||''
+ };
+ const saveButton=$('saveSlipBtn');if(saveButton)saveButton.disabled=true;
+ try{
+  const {data,error:e1}=await sb.rpc('save_measurement_draft',{p_payload:payload,p_measurement_id:editingDraftId||null});
+  if(e1)throw e1;
+  const warning=[];
+  if(photo instanceof File&&photo.size){try{await uploadMedia(data.measurement_id,'photo',photo)}catch(x){warning.push('Photo: '+x.message)}}
+  if(recordedAudio?.size){try{await uploadMedia(data.measurement_id,'voice',recordedAudio)}catch(x){warning.push('Voice: '+x.message)}}
+  recordedAudio=null;editingDraftId=null;
+  notify('Draft '+data.slip_no+' saved'+(warning.length?'; attachment issue: '+warning.join('; '):'')+'. Complete billing before printing.');
+  await refresh();
+ }catch(err){error(err)}finally{if($('saveSlipBtn'))$('saveSlipBtn').disabled=false}
+});
 on('prevMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()-1,1);render()});on('nextMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()+1,1);render()});document.querySelectorAll('[data-date]').forEach(el=>el.onclick=()=>{selectedDate=el.dataset.date;render()});
 const bookingCustomer=$('bookingCustomer'),bookingMeasurement=$('bookingMeasurement');if(bookingCustomer&&bookingMeasurement){const update=()=>{bookingMeasurement.innerHTML='<option value="">None</option>'+measurements.filter(m=>m.customer_id===bookingCustomer.value&&m.order_type===$('bookingType')?.value&&(!m.delivery_date||m.delivery_date===$('bookingDate')?.value)).map(m=>`<option value="${m.id}">${esc(m.slip_no||new Date(m.created_at).toLocaleString())}</option>`).join('')};bookingCustomer.onchange=update;if($('bookingType'))$('bookingType').onchange=()=>{update();updateOverrideVisibility('booking')};if($('bookingDate'))$('bookingDate').onchange=()=>{update();updateOverrideVisibility('booking')};update()}
 on('bookingForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target),type=f.get('order_type'),date=f.get('delivery_date');try{const override=await getOverrideForBooking(f,type,date);const {error:bookError}=await sb.rpc('book_order_v3',{p_customer_id:f.get('customer_id'),p_measurement_id:f.get('measurement_id')||null,p_item_name:f.get('item_name'),p_delivery_date:date,p_order_type:type,p_notes:f.get('notes'),p_days_required:Number(f.get('days_required')),p_override_token:override});if(bookError)throw bookError;notify('Delivery booked');await refresh()}catch(err){error(err)}});
