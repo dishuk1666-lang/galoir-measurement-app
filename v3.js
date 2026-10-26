@@ -36,28 +36,45 @@ function phoneMatches(v){const q=phoneDigits(v);return q.length>=7?customers.fil
 function lastMeasurement(customerId){return measurements.filter(m=>m.customer_id===customerId).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0]||null}
 function initialField(draft,group,name){return esc(draft?.values?.[group+' / '+name]??'')}
 function customerNamePhone(draft){return customers.find(c=>c.id===draft?.customer_id)||null}
-function measurementsView(){const hasSalespeople=salespeople.some(s=>s.active);return `${can('measurements')?`<div class="panel"><h3>GALOIR Order & Measurement Slip</h3><p class="muted">Automatic unique GL number, starting GL2001. Saving the slip also books its delivery.</p><form id="measurementForm"><div class="fields">
-<div><label>Customer</label><select name="customer_id" required>${customerOptions()}</select></div>
-<div><label>Salesperson</label><select name="salesperson_name" required><option value="">Select salesperson</option>${salespersonOptions()}</select></div>
-<div><label>New Make / Self Alter</label><select name="order_type" id="slipType" required>${makeOptions()}</select></div>
-<div><label>Outfit / Article</label><input name="item_name" required maxlength="200" placeholder="e.g. Suit"></div>
-<div><label>Bill No.</label><input name="bill_no" maxlength="70"></div>
-<div><label>Company name</label><input name="company_name" maxlength="120"></div>
-<div><label>Order date</label><input type="date" name="order_date" value="${today}" required></div>
-<div><label>Delivery date</label><input type="date" name="delivery_date" id="slipDate" min="${today}" value="${selectedDate}" required></div>
-<div><label>Days needed to prepare / alter</label><input name="days_required" type="number" min="0" max="60" value="3" required><p class="muted">For Self Alter reminders. New Make supplier reminder is always 2 days before delivery.</p></div>
-<div><label>Reviewed by</label><input name="reviewed_by" maxlength="120"></div>
-<div><label>Measurements based on</label><select name="ready_body"><option value="body">BODY</option><option value="ready">READY</option></select></div>
-<div><label>Lehenga / Sharara</label><select name="lehenga_style"><option value="">Not applicable</option><option value="lehenga">Lehenga</option><option value="sharara">Sharara</option></select></div>
-<div><label>Bottom type</label><select name="bottom_style"><option value="">Not applicable</option><option value="salwar">Salwar</option><option value="pant">Pant</option><option value="plazo">Plazo</option></select></div>
-<div class="span"><label>Items to deliver</label><div class="actions"><label><input type="checkbox" name="deliver_top" style="width:auto"> Top</label><label><input type="checkbox" name="deliver_bottom" style="width:auto"> Bottom</label><label><input type="checkbox" name="deliver_dupatta" style="width:auto"> Dupatta</label></div></div>
-${Object.entries(measureGroups).map(([k,v])=>measurementInputs(k,v)).join('')}
-<div class="span"><label>Remarks · Colour / Fit / Work instructions</label><textarea name="remarks" rows="4"></textarea></div>
-<div class="span"><label>Additional fitting notes</label><textarea name="fitting_notes" rows="2"></textarea></div>
-<div><label>Take photo or upload picture</label><input type="file" name="photo_file" accept="image/*" capture="environment"><p class="muted">Private · max 15 MB</p></div>
-<div><label>Voice note remarks</label><div class="actions"><button type="button" class="btn alt" id="recordVoice">● Record</button><button type="button" class="btn alt" id="stopVoice" disabled>Stop</button></div><p id="voiceStatus" class="muted">No voice note recorded</p></div>
-</div>${overrideFields('slip')}<button class="btn" id="saveSlipBtn" ${!customers.length||!hasSalespeople?'disabled':''}>Save numbered slip & Book Delivery</button>${lastCreated?`<p><button type="button" class="btn alt" data-print="${esc(lastCreated)}">Print latest slip</button></p>`:''}</form></div>`:''}
-<div class="panel"><h3>Measurement History</h3><input id="searchMeasurements" placeholder="Search GL slip no., customer, salesperson or remarks"><div id="measurementRows">${measurementTable(measurements)}</div></div>`}
+function measurementsView(){
+ const d=measurements.find(m=>m.id===editingDraftId&&m.workflow_status==='draft')||null;
+ const c=customerNamePhone(d);
+ const field=(key)=>esc(d?.[key]??'');
+ const selected=(key,val)=>d?.[key]===val?'selected':'';
+ const checked=(key)=>d?.[key]?'checked':'';
+ const ready=salespeople.some(s=>s.active);
+ return `${can('measurements')?`<div class="panel">
+ <h3>${d?'Continue draft '+esc(d.slip_no):'New GALOIR Measurement Slip'}</h3>
+ <p class="muted">Find by phone to reuse customer details and last measurements, or add a new customer. Save at any point. <strong>Drafts do not reserve a delivery slot</strong> until the cashier enters a bill number and confirms booking.</p>
+ <form id="measurementForm"><div class="fields">
+  <div><label>Customer phone number *</label><input id="slipPhone" type="tel" name="customer_phone" value="${esc(c?.phone||'')}" placeholder="Enter phone to look up customer" autocomplete="tel" required maxlength="30"></div>
+  <div><label>Customer found</label><div id="phoneLookupStatus" class="muted">Type phone number to search</div><button id="forceNewCustomer" type="button" class="btn alt">Add new customer</button><input type="hidden" name="force_new_customer" id="forceNewCustomerValue" value="false"></div>
+  <div class="span hidden" id="existingCustomerBox"><label>Select customer</label><select name="customer_id" id="slipCustomerSelect"></select></div>
+  <div class="span" id="newCustomerBox"><label>New customer name</label><input id="slipNewCustomerName" name="customer_name" maxlength="120" value="${esc(c?.full_name||'')}" placeholder="Customer full name"></div>
+  <div><label>Salesperson</label><select name="salesperson_name"><option value="">Select (optional for draft)</option>${salespeople.filter(s=>s.active).map(s=>`<option value="${esc(s.full_name)}" ${selected('salesperson_name',s.full_name)}>${esc(s.full_name)}</option>`).join('')}</select>${!ready?'<p class="muted">Admin can add salespeople later</p>':''}</div>
+  <div><label>New Make / Self Alter</label><select name="order_type" id="slipType"><option value="new_make" ${!d||selected('order_type','new_make')?'selected':''}>New Make — unlimited</option><option value="self_alter" ${selected('order_type','self_alter')}>Self Alter — capacity controlled</option></select></div>
+  <div><label>Outfit / Article (optional for draft)</label><input name="item_name" maxlength="200" value="${field('item_name')}" placeholder="e.g. Silk suit"></div>
+  <div><label>Product barcode</label><input id="slipBarcode" type="text" name="product_barcode" maxlength="120" value="${field('product_barcode')}" placeholder="Scan or type product barcode"><div class="actions"><button class="btn alt" type="button" id="startBarcodeScan">Scan with camera</button><button class="btn alt hidden" type="button" id="stopBarcodeScan">Stop</button></div><video id="barcodeVideo" autoplay playsinline muted class="hidden" style="width:100%;max-height:220px;object-fit:cover;border-radius:9px"></video><p id="barcodeScanStatus" class="muted">Supports handheld barcode scanners and camera where available.</p></div>
+  <div><label>Company name</label><input name="company_name" value="${field('company_name')}" maxlength="120"></div>
+  <div><label>Reviewed by</label><input name="reviewed_by" value="${field('reviewed_by')}" maxlength="120"></div>
+  <div><label>Order date</label><input type="date" name="order_date" value="${d?.order_date||today}"></div>
+  <div><label>Delivery date (optional for draft)</label><input type="date" name="delivery_date" id="slipDate" min="${today}" value="${d?.delivery_date||''}"></div>
+  <div><label>Preparation days</label><input name="days_required" type="number" min="0" max="60" value="${d?.days_required??3}"></div>
+  <div><label>Measurements based on</label><select name="ready_body"><option value="body" ${!d||selected('ready_body','body')?'selected':''}>Body</option><option value="ready" ${selected('ready_body','ready')}>Ready</option></select></div>
+  <div><label>Lehenga / Sharara</label><select name="lehenga_style"><option value="">Not applicable</option><option value="lehenga" ${selected('lehenga_style','lehenga')}>Lehenga</option><option value="sharara" ${selected('lehenga_style','sharara')}>Sharara</option></select></div>
+  <div><label>Bottom type</label><select name="bottom_style"><option value="">Not applicable</option><option value="salwar" ${selected('bottom_style','salwar')}>Salwar</option><option value="pant" ${selected('bottom_style','pant')}>Pant</option><option value="plazo" ${selected('bottom_style','plazo')}>Plazo</option></select></div>
+  <div class="span"><label>Items to deliver</label><div class="actions"><label><input type="checkbox" name="deliver_top" style="width:auto" ${checked('deliver_top')}> Top</label><label><input type="checkbox" name="deliver_bottom" style="width:auto" ${checked('deliver_bottom')}> Bottom</label><label><input type="checkbox" name="deliver_dupatta" style="width:auto" ${checked('deliver_dupatta')}> Dupatta</label></div></div>
+  ${Object.entries(measureGroups).map(([name,items])=>measurementInputs(name,items)).join('')}
+  <div class="span"><label>Remarks / Alteration details</label><textarea name="remarks" rows="4" placeholder="½ inch loose, marking hai, colour details, etc.">${field('remarks')}</textarea></div>
+  <div class="span"><label>Fitting instructions</label><textarea name="fitting_notes" rows="2">${field('fitting_notes')}</textarea></div>
+  <div><label>Take photo / upload image</label><input type="file" name="photo_file" accept="image/*" capture="environment"><p class="muted">Optional private image, up to 15 MB</p></div>
+  <div><label>Voice remarks</label><div class="actions"><button type="button" class="btn alt" id="recordVoice">● Record</button><button type="button" class="btn alt" id="stopVoice" disabled>Stop</button></div><p id="voiceStatus" class="muted">No new voice note recorded</p></div>
+ </div>
+ <div class="actions"><button class="btn" id="saveSlipBtn">Save Draft${d?' '+esc(d.slip_no):' — Reserve GL Slip No.'}</button>${d?'<button type="button" class="btn alt" id="cancelDraftEdit">New slip instead</button>':''}</div>
+ <p class="muted">Bill number and delivery confirmation are entered in Billing Desk. Printing is enabled after billing.</p>
+ </form></div>`:''}
+ <div class="panel"><h3>Measurement History</h3><input id="searchMeasurements" placeholder="Search GL slip, phone, customer, salesperson or barcode"><div id="measurementRows">${measurementTable(measurements)}</div></div>`;
+}
 function measurementTable(rows){const recent=rows.slice().sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,200);return `<p class="muted">${recent.length} measurement slips shown${rows.length>200?' (search to find older records)':''}</p><table><tr><th>Slip</th><th>Customer</th><th>Salesperson</th><th>Delivery</th><th>Type</th><th>Remarks</th><th>Actions</th></tr>${recent.map(m=>`<tr><td><strong>${esc(m.slip_no||'—')}</strong></td><td>${esc(customerName(m.customer_id))}</td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.order_type==='new_make'?'New Make':'Self Alter')}</td><td>${esc((m.remarks||m.fitting_notes||'').slice(0,100))}</td><td><div class="actions"><button class="btn alt" type="button" data-print="${esc(m.id)}">Print</button>${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}</div><details><summary>View measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre></details></td></tr>`).join('')}</table>`}
 function calendarView(){const year=month.getFullYear(),mo=month.getMonth(),first=new Date(year,mo,1).getDay(),days=new Date(year,mo+1,0).getDate();let cells=Array(first).fill('<div></div>');for(let n=1;n<=days;n++){const d=dateStr(new Date(year,mo,n)),cnt=countDate(d);cells.push(`<button class="day ${cnt>=capacity?'full':''} ${selectedDate===d?'selected':''}" data-date="${d}"><strong>${n}</strong><small>${Math.max(0,capacity-cnt)} / ${capacity} Alter slots</small><small>${newCount(d)} New Make</small></button>`)}return `<div class="panel"><div class="top"><h3>${month.toLocaleString('en-IN',{month:'long',year:'numeric'})}</h3><div class="actions"><button class="btn alt" id="prevMonth">Previous</button><button class="btn alt" id="nextMonth">Next</button></div></div><div class="calendar">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(x=>`<div class="muted right">${x}</div>`).join('')}${cells.join('')}</div></div><div class="panel"><h3>Book delivery — ${esc(selectedDate)}</h3><p class="muted">${countDate(selectedDate)} of ${capacity} Self Alter slots used · ${newCount(selectedDate)} New Make bookings (unlimited).</p>${can('bookings')?`<form id="bookingForm"><div class="fields">
 <div><label>Customer</label><select name="customer_id" id="bookingCustomer" required>${customerOptions()}</select></div>
