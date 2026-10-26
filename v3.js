@@ -27,7 +27,7 @@ function alertsView(){return `<div class="panel"><h3>New Make · Contact supplie
 function customerOptions(){return customers.map(c=>`<option value="${c.id}">${esc(c.full_name)} — ${esc(c.phone)}</option>`).join('')}
 function customersView(){return `${can("customers") ? `<div class="panel"><h3>Add customer</h3><form id="customerForm"><div class="fields"><div><label>Full name</label><input name="full_name" required maxlength="120"></div><div><label>Phone</label><input name="phone" required maxlength="30"></div><div class="span"><label>Notes</label><textarea name="notes" rows="2"></textarea></div></div><button class="btn">Save Customer</button></form></div>` : ""}<div class="panel"><h3>Customer profiles</h3><input id="searchCustomers"><div id="customerRows">${customerTable(customers)}</div></div>`}
 function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(c.phone)}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
-const measureGroups={"Top / Ready / Body":["Length","Chest","Upper Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair"],"Salwar / Pant / Plazo":["Length","Poncha","Waist","Hip","Thigh","Calf","Ankle"]};
+const measureGroups={"Top / Ready / Body":["Length","Upper Chest","Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair"],"Salwar / Pant / Plazo":["Length","Poncha","Waist","Hip","Thigh","Calf","Ankle"]};
 function measurementInputs(group,items){const current=measurements.find(m=>m.id===editingDraftId);return `<div class="panel span"><h3>${esc(group)} — numbers or tailor instructions</h3><div class="fields">${items.map(x=>`<div><label>${esc(x)}</label><input type="text" maxlength="120" name="m_${esc(group+' / '+x)}" value="${initialField(current,group,x)}"></div>`).join('')}</div></div>`}
 function makeOptions(){return `<option value="new_make">New Make — no daily limit</option><option value="self_alter">Self Alter — daily limit applies</option>`}
 function overrideFields(prefix){return `<div class="panel hidden override-box" id="${prefix}Override"><h3>Self Alter date full — supervisor password required</h3><p class="muted">An Admin or Manager must enter their own login email and password to approve this one extra booking. This approval expires after 3 minutes and cannot be reused.</p><div class="fields"><div><label>Supervisor email</label><input type="email" name="reviewer_email" autocomplete="off"></div><div><label>Supervisor password</label><input type="password" name="reviewer_password" autocomplete="off"></div></div></div>`}
@@ -220,9 +220,9 @@ async function printSlip(m){
     const deliver=[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean).join(', ');
     const details=[
       ['Customer',customer?.full_name],['Phone',customer?.phone],['Bill No.',m.bill_no],
-      ['Product Barcode',m.product_barcode],['Design Number',m.design_number],['Delivery Date',outputDate(m.delivery_date)],
+      ['Product Barcode',m.product_barcode],['Design Number',m.design_number],
       ['Order Date',outputDate(m.order_date)],['Order Type',m.order_type==='new_make'?'New Make':'Self Alter'],
-      ['Outfit',m.item_name],['Salesperson',m.salesperson_name],['Company',m.company_name],
+      ['Outfit',m.item_name],['Company',m.company_name],
       ['Reviewed By',m.reviewed_by],['Size Basis',m.ready_body],
       ['Preparation Days',m.days_required],['CRM Ready',order?.is_ready?'Yes':'No'],['Deliver',deliver]
     ];
@@ -230,9 +230,9 @@ async function printSlip(m){
       const rows=Math.ceil(items.length/2);
       return `<section class="measure-section" style="--rows:${rows}">
         <h3>${esc(title)} — INCHES</h3>
-        <div class="measure-grid">${items.map(name=>`
+        <div class="measure-grid">${items.map((name,i)=>`
           <div class="measure-cell">
-            <span class="measure-name">${esc(name)}</span>
+            <span class="measure-name">${title==='Top / Ready / Body'?'<b class="measure-no">'+(i+1)+'.</b> ':''}${esc(name)}</span>
             <strong class="measure-value">${esc(displayValue(m.values?.[title+' / '+name]))}</strong>
           </div>`).join('')}
         </div>
@@ -255,6 +255,13 @@ async function printSlip(m){
       .address{font-size:11px;line-height:1.4}
       .slip-title{text-align:right;font-size:13px;font-weight:700}
       .slip-number{font-size:23px;font-weight:850;margin-top:4px}
+      .priority-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:2px solid #333;background:#f3f3f3}
+      .priority-cell{min-width:0;padding:9px 10px;border-right:1px solid #777}
+      .priority-cell:last-child{border-right:0}
+      .priority-label{display:block;color:#333;font-weight:800;font-size:11px;letter-spacing:.65px;margin-bottom:5px}
+      .priority-value{display:block;font-size:20px;line-height:1.2;font-weight:850;overflow-wrap:anywhere}
+      .slip-id{font-size:23px}
+      .measure-no{font-size:16px;font-weight:850;margin-right:4px}
       .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 9px}
       .detail{display:flex;justify-content:space-between;align-items:baseline;gap:5px;
         border-bottom:1px dotted #b7b7b7;min-width:0;min-height:29px;padding:6px 2px}
@@ -292,8 +299,13 @@ async function printSlip(m){
       <header class="slip-header">
         <div><div class="brand">GALOIR</div>
           <div class="address">J-79, Rajouri Garden Main Market, New Delhi-110027</div></div>
-        <div class="slip-title">TAILOR ORDER SLIP<div class="slip-number">${esc(m.slip_no||'—')}</div></div>
+        <div class="slip-title">TAILOR ORDER SLIP</div>
       </header>
+      <div class="priority-strip" aria-label="Important tailor details">
+        <div class="priority-cell"><span class="priority-label">SLIP NUMBER</span><strong class="priority-value slip-id">${esc(m.slip_no||'—')}</strong></div>
+        <div class="priority-cell"><span class="priority-label">DELIVERY DATE</span><strong class="priority-value">${esc(outputDate(m.delivery_date))}</strong></div>
+        <div class="priority-cell"><span class="priority-label">SALESPERSON</span><strong class="priority-value">${esc(m.salesperson_name||'—')}</strong></div>
+      </div>
       <div class="order-details">${details.map(([key,value])=>`
         <div class="detail"><span class="detail-label">${esc(key)}</span>
         <strong class="detail-value">${esc(displayValue(value))}</strong></div>`).join('')}</div>
