@@ -56,6 +56,7 @@ function measurementsView(){
   <div><label>Outfit / Article (optional for draft)</label><input name="item_name" maxlength="200" value="${field('item_name')}"></div>
   <div><label>Product barcode (optional for New Make)</label><input id="slipBarcode" type="text" name="product_barcode" maxlength="120" value="${field('product_barcode')}"><div class="actions"><button class="btn alt" type="button" id="startBarcodeScan">Scan with camera</button><button class="btn alt hidden" type="button" id="stopBarcodeScan">Stop</button></div><video id="barcodeVideo" autoplay playsinline muted class="hidden" style="width:100%;max-height:220px;object-fit:cover;border-radius:9px"></video><p id="barcodeScanStatus" class="muted">Supports handheld barcode scanners and camera where available.</p></div>
   <div><label>Design Number (optional)</label><input type="text" name="design_number" value="${field('design_number')}" maxlength="100"></div>
+  <div><label>Final Billing Amount (₹) — required for billing</label><input type="number" name="final_billing_amount" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${field('final_billing_amount')}"><p class="muted">May be blank in a draft. Mandatory before the cashier confirms billing. Not printed on the tailor slip.</p></div>
   <div><label>Company name</label><input name="company_name" value="${field('company_name')}" maxlength="120"></div>
   <div><label>Reviewed by</label><input name="reviewed_by" value="${field('reviewed_by')}" maxlength="120"></div>
   <div><label>Order date</label><input type="date" name="order_date" value="${d?.order_date||today}"></div>
@@ -84,17 +85,17 @@ function measurementsView(){
 }
 function measurementTable(rows){
  const list=rows.slice().sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,200);
- return `<p class="muted">${list.length} slips shown${rows.length>200?' (search to find older records)':''}</p><table><tr><th>Slip / Stage</th><th>Customer / Phone</th><th>Outfit / Design / Barcode</th><th>Salesperson</th><th>Delivery</th><th>Bill</th><th>Actions</th></tr>${list.map(m=>{
+ return `<p class="muted">${list.length} slips shown${rows.length>200?' (search to find older records)':''}</p><table><tr><th>Slip / Stage</th><th>Customer / Phone</th><th>Outfit / Design / Barcode</th><th>Salesperson</th><th>Delivery</th><th>Bill</th><th>Final Amount (₹)</th><th>Actions</th></tr>${list.map(m=>{
   const c=customers.find(x=>x.id===m.customer_id);
   const isBilled=m.workflow_status==='billed'&&Boolean(m.bill_no);
-  return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(c?.phone||'')}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
+  return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(c?.phone||'')}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
   ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}${m.video_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="video">Video</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
  }).join('')}</table>`;
 }
 function cashierView(){
  const drafts=measurements.filter(m=>m.workflow_status==='draft').sort((a,b)=>a.created_at.localeCompare(b.created_at));
  const billed=measurements.filter(m=>m.workflow_status==='billed'&&m.bill_no).sort((a,b)=>b.billed_at?.localeCompare(a.billed_at||'')||0).slice(0,60);
- return `<div class="panel"><h3>Cashier Billing Desk · ${drafts.length} draft slip${drafts.length===1?'':'s'} waiting</h3><p class="muted">Sales can save half-filled slips. Cashier enters bill number, completes missing outfit/delivery details and confirms the booking. Only billed slips can be printed. This desk works with the common Sales login or Admin login.</p>${drafts.length?drafts.map(m=>{
+ return `<div class="panel"><h3>Cashier Billing Desk · ${drafts.length} draft slip${drafts.length===1?'':'s'} waiting</h3><p class="muted">Sales can save half-filled slips. The cashier must enter the final billing amount, bill number and remaining delivery details before confirming. The amount is kept for internal records and never appears on the tailor printout. Only billed slips can be printed. This desk works with the common Sales login or Admin login.</p>${drafts.length?drafts.map(m=>{
   const c=customers.find(x=>x.id===m.customer_id),full=m.order_type==='self_alter'&&m.delivery_date&&countDate(m.delivery_date)>=capacity;
   return `<div class="panel"><h3>Slip ${esc(m.slip_no)} — Ready for Billing</h3>
   <div class="fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:18px;padding:14px;background:#f4f2ee;border-radius:10px">
@@ -105,6 +106,7 @@ function cashierView(){
   </div>
   <form class="cashierForm" data-slip-id="${esc(m.id)}"><div class="fields">
   <div><label>Bill number *</label><input name="bill_no" maxlength="100" required></div>
+  <div><label>Final Billing Amount (₹) *</label><input name="final_billing_amount" type="number" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${esc(m.final_billing_amount??'')}" required></div>
   <div><label>Outfit / Article *</label><input name="item_name" maxlength="200" value="${esc(m.item_name||'')}" required></div>
   <div><label>Delivery date *</label><input class="cashierDate" name="delivery_date" type="date" min="${today}" value="${esc(m.delivery_date||'')}" required></div>
   <div><label>Product Barcode (optional${m.order_type==='new_make'?' for New Make':''})</label><input name="product_barcode" maxlength="120" value="${esc(m.product_barcode||'')}"></div>
@@ -113,7 +115,7 @@ function cashierView(){
   <div class="panel cashierOverride ${full?'':'hidden'}"><h3>Full-date authorization</h3><p class="muted">Enter the Admin or Manager email and password for one extra Self Alter booking.</p><div class="fields"><div><label>Supervisor email</label><input name="reviewer_email" type="email" autocomplete="off"></div><div><label>Supervisor password</label><input name="reviewer_password" type="password" autocomplete="off"></div></div></div>
   <button type="submit" class="btn">Confirm Billing & Book Delivery</button><button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Complete measurements first</button>
   </form></div>`;
- }).join(''):'<p>No drafts waiting for billing.</p>'}</div><div class="panel"><h3>Billed Slips · Ready to print</h3>${billed.length?`<table><tr><th>Slip</th><th>Customer / Phone</th><th>Order Type</th><th>Bill No.</th><th>Design No.</th><th>Barcode</th><th>Print</th></tr>${billed.map(m=>{const c=customers.find(x=>x.id===m.customer_id);return `<tr><td>${esc(m.slip_no)}</td><td>${esc(c?.full_name||'—')}<br><span class="muted">${esc(c?.phone||'—')}</span></td><td>${m.order_type==='new_make'?'New Make':'Self Alter'}</td><td>${esc(m.bill_no)}</td><td>${esc(m.design_number||'—')}</td><td>${esc(m.product_barcode||'—')}</td><td><button class="btn" type="button" data-print="${esc(m.id)}">Print Tailor Slip</button></td></tr>`}).join('')}</table>`:'<p class="muted">No billed slips yet.</p>'}</div>`;
+ }).join(''):'<p>No drafts waiting for billing.</p>'}</div><div class="panel"><h3>Billed Slips · Ready to print</h3>${billed.length?`<table><tr><th>Slip</th><th>Customer / Phone</th><th>Order Type</th><th>Bill No.</th><th>Design No.</th><th>Barcode</th><th>Final Amount (₹)</th><th>Print</th></tr>${billed.map(m=>{const c=customers.find(x=>x.id===m.customer_id);return `<tr><td>${esc(m.slip_no)}</td><td>${esc(c?.full_name||'—')}<br><span class="muted">${esc(c?.phone||'—')}</span></td><td>${m.order_type==='new_make'?'New Make':'Self Alter'}</td><td>${esc(m.bill_no)}</td><td>${esc(m.design_number||'—')}</td><td>${esc(m.product_barcode||'—')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><button class="btn" type="button" data-print="${esc(m.id)}">Print Tailor Slip</button></td></tr>`}).join('')}</table>`:'<p class="muted">No billed slips yet.</p>'}</div>`;
 }
 function calendarView(){const year=month.getFullYear(),mo=month.getMonth(),first=new Date(year,mo,1).getDay(),days=new Date(year,mo+1,0).getDate();let cells=Array(first).fill('<div></div>');for(let n=1;n<=days;n++){const d=dateStr(new Date(year,mo,n)),cnt=countDate(d),weekday=new Date(year,mo,n).getDay(),weekend=weekday===0||weekday===6,past=d<today,dayClass=weekend?'weekend':past?'past':cnt>=capacity?'full':'available';cells.push(`<button class="day ${dayClass} ${selectedDate===d?'selected':''}" data-date="${d}" aria-label="${d}, ${weekend?'weekend, ':''}${Math.max(0,capacity-cnt)} Self Alter slots free"><strong>${n}</strong><small>${Math.max(0,capacity-cnt)} / ${capacity} Alter slots</small><small>${newCount(d)} New Make</small></button>`)}return `<div class="panel"><div class="top"><h3>${month.toLocaleString('en-IN',{month:'long',year:'numeric'})}</h3><div class="actions"><button class="btn alt" id="prevMonth">Previous</button><button class="btn alt" id="nextMonth">Next</button></div></div><p class="muted">Green: available Self Alter slots · Red: Saturday / Sunday · Amber: full Self Alter date · Grey: past weekday. Weekends can still be booked according to normal rules; New Make remains unlimited.</p><div class="calendar">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((x,i)=>`<div class="right ${i===0||i===6?'weekend-heading':'muted'}">${x}</div>`).join('')}${cells.join('')}</div></div><div class="panel"><h3>Book delivery — ${esc(selectedDate)}</h3><p class="muted">${countDate(selectedDate)} of ${capacity} Self Alter slots used · ${newCount(selectedDate)} New Make bookings (unlimited).</p>${can('bookings')?`<form id="bookingForm"><div class="fields">
 <div><label>Customer</label><select name="customer_id" id="bookingCustomer" required>${customerOptions()}</select></div>
@@ -147,14 +149,19 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
   try{
    const day=String(f.get('delivery_date')||''),bill=String(f.get('bill_no')||'').trim(),item=String(f.get('item_name')||'').trim();
    if(!bill)throw Error('Enter the bill number to complete billing');
+   const amountText=String(f.get('final_billing_amount')||'').trim();
+   const finalAmount=Number(amountText);
+   if(!/^\d+(?:\.\d{1,2})?$/.test(amountText)||!Number.isFinite(finalAmount)||finalAmount<=0||finalAmount>9999999999.99)
+     throw Error('Enter a valid final billing amount in rupees (greater than ₹0, maximum two decimals)');
    const approval=await getOverrideForBooking(f,m.order_type,day);
-   const {data,error:billError}=await sb.rpc('finalize_slip_billing_v2',{
+   const {data,error:billError}=await sb.rpc('finalize_slip_billing_v3',{
     p_measurement_id:id,
     p_bill_no:bill,
     p_item_name:item,
     p_delivery_date:day,
     p_product_barcode:f.get('product_barcode')||null,
     p_design_number:f.get('design_number')||null,
+    p_final_billing_amount:finalAmount,
     p_override_token:approval
    });
    if(billError)throw billError;
@@ -437,6 +444,9 @@ on('measurementForm','submit',async e=>{
   const extension=String(video.name||'').toLowerCase().split('.').pop();
   if(!supported.includes(mime)&&!(mime===''&&['mp4','mov','webm','m4v'].includes(extension)))return notify('Please choose an MP4, MOV or WebM video');
  }
+ const amountText=String(f.get('final_billing_amount')||'').trim();
+ if(amountText&&(!/^\d+(?:\.\d{1,2})?$/.test(amountText)||Number(amountText)<=0||Number(amountText)>9999999999.99))
+   return notify('Final billing amount must be a positive amount in rupees with up to two decimals');
  const payload={
  customer_phone:f.get('customer_phone'),
  customer_id:f.get('customer_id')||null,
@@ -447,6 +457,7 @@ on('measurementForm','submit',async e=>{
  item_name:f.get('item_name')||'',
  product_barcode:f.get('product_barcode')||'',
  design_number:f.get('design_number')||'',
+ final_billing_amount:amountText||null,
  company_name:f.get('company_name')||'',
  reviewed_by:f.get('reviewed_by')||'',
  order_date:f.get('order_date')||today,
