@@ -40,8 +40,7 @@ function templateFor(row, config) {
     total_amount:formatRupees(data.total_amount),paid_amount:formatRupees(data.paid_amount),
     balance_amount:formatRupees(data.balance_amount),delivery_date:data.delivery_date
   }:event==='ready_for_collection'?{
-    customer_name:data.customer_name,slip_no:data.slip_no,bill_no:data.bill_no,
-    delivery_date:data.delivery_date
+    customer_name:data.customer_name,slip_no:data.slip_no,bill_no:data.bill_no
   }:null;
   if(!fields)throw new Error('Unknown notification type');
   if(Object.values(fields).some(v=>v===null||v===undefined||String(v).trim()===''))throw new Error('Missing order details');
