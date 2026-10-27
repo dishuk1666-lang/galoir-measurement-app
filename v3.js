@@ -28,7 +28,8 @@ function customerOptions(){return customers.map(c=>`<option value="${c.id}">${es
 function customersView(){return `${can("customers") ? `<div class="panel"><h3>Add customer</h3><form id="customerForm"><div class="fields"><div><label>Full name</label><input name="full_name" required maxlength="120"></div><div><label>Phone</label><input name="phone" required maxlength="30"></div><div class="span"><label>Notes</label><textarea name="notes" rows="2"></textarea></div></div><button class="btn">Save Customer</button></form></div>` : ""}<div class="panel"><h3>Customer profiles</h3><input id="searchCustomers"><div id="customerRows">${customerTable(customers)}</div></div>`}
 function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(c.phone)}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
 const measureGroups={"Top / Ready / Body":["Length","Upper Chest","Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair"],"Salwar / Pant / Plazo":["Length","Poncha","Waist","Hip","Thigh","Calf","Ankle"]};
-function measurementInputs(group,items){const current=measurements.find(m=>m.id===editingDraftId);return `<div class="panel span"><h3>${esc(group)} — numbers or tailor instructions</h3><div class="fields">${items.map(x=>`<div><label>${esc(x)}</label><input type="text" maxlength="120" name="m_${esc(group+' / '+x)}" value="${initialField(current,group,x)}"></div>`).join('')}</div></div>`}
+function measurementGroupDisplayName(group){return group==='Lehenga / Sharara'?'Lehenga / Sharara / Saree':group}
+function measurementInputs(group,items){const current=measurements.find(m=>m.id===editingDraftId);return `<div class="panel span"><h3>${esc(measurementGroupDisplayName(group))} — numbers or tailor instructions</h3><div class="fields">${items.map(x=>`<div><label>${esc(x)}</label><input type="text" maxlength="120" name="m_${esc(group+' / '+x)}" value="${initialField(current,group,x)}"></div>`).join('')}</div></div>`}
 function makeOptions(){return `<option value="new_make">New Make — no daily limit</option><option value="self_alter">Self Alter — daily limit applies</option>`}
 function overrideFields(prefix){return `<div class="panel hidden override-box" id="${prefix}Override"><h3>Self Alter date full — supervisor password required</h3><p class="muted">An Admin or Manager must enter their own login email and password to approve this one extra booking. This approval expires after 3 minutes and cannot be reused.</p><div class="fields"><div><label>Supervisor email</label><input type="email" name="reviewer_email" autocomplete="off"></div><div><label>Supervisor password</label><input type="password" name="reviewer_password" autocomplete="off"></div></div></div>`}
 function phoneDigits(v){let d=String(v||'').replace(/\D/g,'');return d.length===12&&d.startsWith('91')?d.slice(2):d}
@@ -398,7 +399,7 @@ async function printSlip(m){
         if(items[i+rows])printOrder.push(items[i+rows]);
       }
       return `<section class="measure-section" style="--rows:${rows}">
-        <h3>${esc(title)} — INCHES</h3>
+        <h3>${esc(measurementGroupDisplayName(title))} — INCHES</h3>
         <div class="measure-grid">${printOrder.map(name=>`
           <div class="measure-cell">
             <span class="measure-name">${esc(name)}</span>
