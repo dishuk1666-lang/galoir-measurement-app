@@ -4,9 +4,9 @@ const cfg=window.GALOIR_CONFIG||{};const ready=cfg.supabaseUrl?.startsWith('http
 const sb=ready?createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,month=new Date(),selectedDate=today;
-const allowed={admin:['dashboard','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','alerts','customers','measurements','daily','tailoring']};
-const titles={dashboard:'Dashboard',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,month=new Date(),selectedDate=today;
+const allowed={admin:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','scanner','alerts','customers','measurements','daily','tailoring']};
+const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
 function notify(s){$('notice').textContent=s;$('notice').classList.remove('hidden');setTimeout(()=>$('notice').classList.add('hidden'),4500)}
 function error(e){notify('Error: '+(e?.message||e));console.error(e)}
@@ -20,8 +20,120 @@ function activeOrders(){return orders.filter(o=>o.status!=='delivered'&&!o.is_re
 function supplierAlerts(){return activeOrders().filter(o=>o.order_type==='new_make'&&!o.supplier_notified_at&&daysUntil(o.delivery_date)<=2)}
 function alterationAlerts(){return activeOrders().filter(o=>o.order_type!=='new_make'&&daysUntil(o.delivery_date)<=Number(o.days_required??2))}
 function outputDate(d){return d?new Date(d+'T12:00:00').toLocaleDateString('en-IN'):'—'}
-function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,alerts:alertsView,customers:customersView,measurements:measurementsView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
-function dashboardView(){const due=orders.filter(o=>o.delivery_date===today),pending=orders.filter(o=>o.status!=='delivered');return `<div class="grid">${[['Customers',customers.length],['Today’s deliveries',due.length],['Pending outfits',pending.length],['Self Alter slots today',Math.max(0,capacity-countDate(today))]].map(x=>`<div class="card"><div class="muted">${x[0]}</div><div class="stat">${x[1]}</div></div>`).join('')}</div><div class="panel"><h3>Action reminders</h3><p><strong>${alterationAlerts().length}</strong> alterations to prepare · <strong>${supplierAlerts().length}</strong> New Make supplier follow-ups</p><button class="btn alt" id="openAlerts">Open Reminders</button></div><div class="panel"><h3>Today's delivery schedule</h3>${ordersTable(due)}</div><div class="panel"><h3>Pending tailoring work</h3>${ordersTable(pending.slice(0,20))}</div>`}
+function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
+function masterRoomDate(o){
+ const delivery=Date.parse(String(o.delivery_date||'')+'T00:00:00Z');
+ if(!Number.isFinite(delivery))return '';
+ const days=Math.max(0,Number(o.days_required)||0);
+ return new Date(delivery-days*86400000).toISOString().slice(0,10);
+}
+function istDate(v){return v?new Date(new Date(v).getTime()+330*60000).toISOString().slice(0,10):''}
+function masterRoomToday(){
+ return orders.filter(o=>o.order_type==='self_alter'&&o.status!=='delivered'&&!o.is_ready&&masterRoomDate(o)<=today
+ &&(!o.master_room_sent_at||istDate(o.master_room_sent_at)===today))
+ .sort((a,b)=>a.delivery_date.localeCompare(b.delivery_date));
+}
+function deliveriesToday(){return orders.filter(o=>o.delivery_date===today).sort((a,b)=>Number(a.status==='delivered')-Number(b.status==='delivered'))}
+function worklistRow(o,kind){
+ const m=measurements.find(x=>x.id===o.measurement_id);
+ const c=customers.find(x=>x.id===o.customer_id);
+ const alreadyDelivered=o.status==='delivered';
+ const sent=!!o.master_room_sent_at;
+ const isMaster=kind==='master';
+ const checked=isMaster?sent:alreadyDelivered;
+ const blocked=!isMaster&&!o.is_ready&&!alreadyDelivered;
+ const label=isMaster?'Sent to master room':'Delivered to customer';
+ const badge=isMaster?(sent?'Sent to master':'Awaiting handoff'):(alreadyDelivered?'Delivered':o.is_ready?'Ready for delivery':'Not ready');
+ const extra=isMaster?`<small class="worklist-date">${masterRoomDate(o)<today?'⚠ Overdue for master room':'Send today'} · Delivery ${esc(outputDate(o.delivery_date))}</small>`:
+ `<small class="worklist-date">Delivery ${esc(outputDate(o.delivery_date))} · ${o.is_ready?'Outfit ready':'Outfit not ready'}</small>`;
+ return `<article class="worklist-row ${checked?'worklist-checked':''}">
+ <div class="worklist-entry">
+  <strong>${esc(c?.full_name||customerName(o.customer_id))}</strong>
+  <span>${esc(c?.phone||'')} · <b>${esc(m?.slip_no||'No GL slip')}</b></span>
+  <span>${esc(o.item_name)} · ${o.order_type==='new_make'?'New Make':'Self Alter'}</span>
+  ${extra}
+  <span class="worklist-status">${esc(badge)}</span>
+ </div>
+ <label class="worklist-check">
+  <input type="checkbox" ${isMaster?'data-master-id':'data-deliver-id'}="${esc(o.id)}" ${checked?'checked':''} ${blocked?'disabled':''}>
+  <span>${label}</span>
+ </label>
+ </article>`;
+}
+function dashboardView(){
+ const due=deliveriesToday(),master=masterRoomToday();
+ const delivered=due.filter(o=>o.status==='delivered').length;
+ const sent=master.filter(o=>o.master_room_sent_at).length;
+ const overdueDelivery=orders.filter(o=>o.delivery_date<today&&o.status!=='delivered').length;
+ return `<div class="dashboard-summary">
+  <div class="card"><div class="muted">Deliver today</div><div class="stat">${due.length-delivered}<small> remaining / ${due.length} total</small></div></div>
+  <div class="card"><div class="muted">Send to master room</div><div class="stat">${master.length-sent}<small> pending / ${master.length} today</small></div></div>
+  <div class="card"><div class="muted">Overdue deliveries</div><div class="stat">${overdueDelivery}</div></div>
+  <div class="card"><div class="muted">Outfits ready</div><div class="stat">${orders.filter(o=>o.is_ready&&o.status!=='delivered').length}</div></div>
+ </div>
+ <div class="dashboard-two-columns">
+  <section class="panel dashboard-worklist"><div class="dashboard-list-heading"><h3>🚚 Deliver Today</h3><span>${delivered} of ${due.length} delivered</span></div>
+   <p class="muted">Tick <b>Delivered</b> after handing over the outfit. An outfit must be marked Ready first.</p>
+   ${due.length?due.map(o=>worklistRow(o,'deliver')).join(''):'<p class="dashboard-empty">No deliveries scheduled today.</p>'}
+  </section>
+  <section class="panel dashboard-worklist"><div class="dashboard-list-heading"><h3>✂ Send to Master Room Today</h3><span>${sent} sent</span></div>
+   <p class="muted">Self Alter outfits due for preparation today, including anything overdue. Tick once given to the master.</p>
+   ${master.length?master.map(o=>worklistRow(o,'master')).join(''):'<p class="dashboard-empty">Nothing is waiting to be sent to the master room.</p>'}
+  </section>
+ </div>
+ <div class="panel scan-dashboard-cta"><div><h3>Outfit Ready Scanner</h3><p class="muted">Scan the GL barcode printed on the tailor slip to mark the matching outfit ready.</p></div><button type="button" class="btn" id="openReadyScanner">Scan Ready Outfit</button></div>
+ <div class="panel"><h3>Other action reminders</h3><p>${alterationAlerts().length} alterations need preparation · ${supplierAlerts().length} New Make supplier follow-ups</p><button class="btn alt" id="openAlerts">Open reminders</button></div>`;
+}
+function readyScannerView(){
+ const last=lastReadyScanResult;
+ return `<div class="panel ready-scanner-panel">
+  <h3>Scan Ready Outfit</h3>
+  <p class="muted">Use a phone/tablet camera or a handheld USB/Bluetooth barcode scanner. Scan the <b>GL barcode on the tailor slip</b>, not the product barcode.</p>
+  <form id="readyScannerForm" autocomplete="off">
+   <label for="readySlipInput">Tailor Slip Barcode / GL Slip Number</label>
+   <div class="ready-scanner-row">
+    <input id="readySlipInput" type="text" name="slip_no" maxlength="20" required autocapitalize="characters" spellcheck="false" inputmode="text">
+    <button type="submit" class="btn" id="markScannedReady">Mark Ready</button>
+   </div>
+  </form>
+  <div class="actions" style="margin-top:12px">
+   <button type="button" class="btn alt" id="startReadyCamera">Scan with Camera</button>
+   <button type="button" class="btn alt hidden" id="stopReadyCamera">Stop Camera</button>
+  </div>
+  <video id="readyScanVideo" class="hidden" autoplay muted playsinline style="max-height:300px;width:100%;object-fit:cover;border-radius:10px;margin-top:12px"></video>
+  <p id="readyScanStatus" class="muted" aria-live="polite">The matching billed outfit will be marked ready automatically after a successful scan.</p>
+  ${last?`<div class="scan-success"><strong>${esc(last.slip_no)} — ${last.already_ready?'Already ready':'Marked READY ✓'}</strong><p>${esc(last.customer_name||'Customer')} · ${esc(last.item_name||'Outfit')}</p></div>`:''}
+ </div>
+ <div class="panel"><h3>Ready for Collection</h3>
+  ${ordersTable(orders.filter(o=>o.is_ready&&o.status!=='delivered').slice().sort((a,b)=>a.delivery_date.localeCompare(b.delivery_date)).slice(0,100))}
+ </div>`;
+}
+function slipCode39Svg(raw){
+ const code=String(raw||'').toUpperCase();
+ if(!/^GL[0-9]{1,16}$/.test(code))return '';
+ const patterns={
+ '0':'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw',
+ '5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
+ 'G':'nnnnnwwnw','L':'nnwnnnnww','*':'nwnnwnwnn'
+ };
+ const narrow=2,wide=5,quiet=16,barHeight=60,gap=2;
+ let x=quiet;const bars=[];
+ for(const letter of '*'+code+'*'){
+  const pattern=patterns[letter];if(!pattern)return '';
+  for(let i=0;i<pattern.length;i++){
+   const width=pattern[i]==='w'?wide:narrow;
+   if(i%2===0)bars.push(`<rect x="${x}" y="0" width="${width}" height="${barHeight}"/>`);
+   x+=width;
+  }
+  x+=gap;
+ }
+ const width=x+quiet;
+ return `<svg class="tailor-slip-barcode" role="img" aria-label="Unique GL barcode ${esc(code)}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 84" width="100%" height="74" preserveAspectRatio="xMidYMid meet">
+ <rect width="${width}" height="84" fill="white"/>
+ <g fill="#151515">${bars.join('')}</g>
+ <text x="${width/2}" y="80" font-family="Arial,sans-serif" font-size="13" text-anchor="middle" font-weight="bold" letter-spacing="2">${esc(code)}</text>
+ </svg>`;
+}
 function ordersTable(rows){return `<table><thead><tr><th>Customer / Slip</th><th>Outfit / Type</th><th>Delivery</th><th>Status</th><th>CRM Ready</th><th>Supplier Follow-up</th></tr></thead><tbody>${rows.length?rows.map(o=>{const slip=measurements.find(m=>m.id===o.measurement_id)?.slip_no||'—';return `<tr><td>${esc(customerName(o.customer_id))}<br><strong>${esc(slip)}</strong></td><td>${esc(o.item_name)}<br><span class="muted">${o.order_type==='new_make'?'New Make':'Self Alter'}</span></td><td>${esc(outputDate(o.delivery_date))}</td><td><span class="pill">${esc(o.status)}</span></td><td><label><input type="checkbox" data-ready-id="${esc(o.id)}" ${o.is_ready?'checked':''} style="width:auto"> Ready</label></td><td>${o.order_type==='new_make'?`<button type="button" class="btn alt" data-supplier-id="${esc(o.id)}">${o.supplier_notified_at?'✓ Supplier informed':'Mark supplier informed'}</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="6">No records</td></tr>'}</tbody></table>`}
 function alertsView(){return `<div class="panel"><h3>New Make · Contact supplier 2 days before delivery</h3><p class="muted">These reminders appear from 2 days before delivery until marked Supplier Informed or Ready.</p>${ordersTable(supplierAlerts())}</div><div class="panel"><h3>Self Alter · Put on alteration / prepare</h3><p class="muted">Reminders begin the selected number of preparation days before delivery.</p>${ordersTable(alterationAlerts())}</div>`}
 function customerOptions(){return customers.map(c=>`<option value="${c.id}">${esc(c.full_name)} — ${esc(c.phone)}</option>`).join('')}
