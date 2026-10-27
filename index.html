@@ -211,4 +211,23 @@
  .status-preview-notes{grid-template-columns:1fr}
  .status-preview-header{align-items:flex-start;flex-direction:column}
 }
+
+/* WhatsApp order notifications: payment, consent and admin delivery log */
+.payment-balance{min-height:42px;display:flex;align-items:center;padding:10px 13px;border:1px solid #b6cab7;border-radius:8px;background:#f1fbf2;color:#265d31;font-size:20px;font-weight:850;overflow-wrap:anywhere}
+.payment-balance.payment-invalid{border:2px solid #bd3d37;background:#fff1f0;color:#9d2c28;font-size:13px}
+.whatsapp-optin{border:1px solid #bfd5bf;border-radius:9px;background:#f3fbf3;padding:13px 15px}
+.whatsapp-optin label{display:flex;align-items:flex-start;gap:10px;font-weight:700;line-height:1.45;margin:0}
+.whatsapp-optin label input{flex:0 0 auto;width:21px!important;height:21px;accent-color:#246b3b;margin-top:1px}
+.whatsapp-optin .muted{margin:7px 0 0;font-size:12px}
+.whatsapp-settings-panel{border-top:3px solid #407856}
+.whatsapp-settings-panel .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.whatsapp-settings-panel .wa-approval{display:flex;align-items:flex-start;gap:10px;background:#fff6e4;border:1px solid #e8cd91;border-radius:8px;padding:13px;margin:15px 0;line-height:1.55;font-size:13px;font-weight:700}
+.whatsapp-settings-panel .wa-approval input{width:20px!important;height:20px;margin-top:2px;accent-color:#38704d;flex:0 0 auto}
+.wa-count-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0}
+.wa-count-grid>div{border-radius:9px;padding:12px;background:#f5f2ed;text-align:center}
+.wa-count-grid strong{display:block;font-size:23px;color:#2a3930}
+.wa-count-grid small{display:block;font-size:11px;color:#73685f;font-weight:700}
+.whatsapp-settings-panel .table-scroll{overflow-x:auto;max-width:100%}
+.whatsapp-settings-panel td{max-width:245px;overflow-wrap:anywhere;font-size:12px}
+@media(max-width:520px){.wa-count-grid{gap:6px}.wa-count-grid>div{padding:9px 5px}.wa-count-grid strong{font-size:19px}.whatsapp-settings-panel .actions{gap:7px}.whatsapp-settings-panel .btn{font-size:12px}}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
