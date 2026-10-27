@@ -1,7 +1,7 @@
-// GALOIR WhatsApp Cloud API dispatcher.
+// GALOIR WATI v3 API dispatcher.
 // Only authenticated, active GALOIR staff can invoke this endpoint.
 // All message contents originate in the database triggers, never from the caller.
-// Sending is disabled until an admin enables settings.whatsapp_enabled and sets WA_* secrets.
+// Sending is disabled until an admin enables settings.whatsapp_enabled and sets WATI_* secrets.
 const allowedOrigins = ['https://app.galoir.com', 'https://galoir-measurement-app.vercel.app'];
 
 function headersFor(origin) {
@@ -33,38 +33,29 @@ function formatRupees(v) {
   return number.toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function templateFor(row, config) {
-  const data = row.template_data || {};
-  let name, values;
-  if (row.event_type === 'order_confirmed') {
-    name = config.confirmedName;
-    values = [
-      data.customer_name, data.slip_no, data.bill_no,
-      formatRupees(data.total_amount), formatRupees(data.paid_amount),
-      formatRupees(data.balance_amount), data.delivery_date
-    ];
-  } else if (row.event_type === 'ready_for_collection') {
-    name = config.readyName;
-    values = [data.customer_name, data.slip_no, data.bill_no, data.delivery_date];
-  } else throw new Error('Unexpected queued event');
-  if (!name || values.some(x => x === null || x === undefined || String(x).trim() === '')) {
-    throw new Error('Missing template name or required message details');
-  }
-  if (!/^[a-z0-9_]{1,512}$/.test(name)) throw new Error('Invalid WhatsApp template name');
-  const to = String(row.phone_e164 || '').replace(/[^0-9]/g,'');
-  if (!/^[1-9][0-9]{9,14}$/.test(to)) throw new Error('Invalid WhatsApp international phone number');
+  const data=row.template_data||{};
+  const event=row.event_type;
+  const fields=event==='order_confirmed'?{
+    customer_name:data.customer_name,slip_no:data.slip_no,bill_no:data.bill_no,
+    total_amount:formatRupees(data.total_amount),paid_amount:formatRupees(data.paid_amount),
+    balance_amount:formatRupees(data.balance_amount),delivery_date:data.delivery_date
+  }:event==='ready_for_collection'?{
+    customer_name:data.customer_name,slip_no:data.slip_no,bill_no:data.bill_no,
+    delivery_date:data.delivery_date
+  }:null;
+  if(!fields)throw new Error('Unknown notification type');
+  if(Object.values(fields).some(v=>v===null||v===undefined||String(v).trim()===''))throw new Error('Missing order details');
+  const name=event==='order_confirmed'?config.confirmedName:config.readyName;
+  if(!/^[a-z0-9_]{1,100}$/i.test(name))throw new Error('Invalid WATI template name');
+  const phone=String(row.phone_e164||'').replace(/\D/g,'');
+  if(!/^[1-9]\d{10,14}$/.test(phone))throw new Error('Invalid international WhatsApp phone');
   return {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'template',
-    template: {
-      name,
-      language: {code: config.language},
-      components: [{
-        type: 'body',
-        parameters: values.map(x => ({type:'text', text:String(x).trim().slice(0,1024)})),
-      }],
-    },
+    channel:config.channel,
+    template_name:name,
+    broadcast_name:'galoir_'+event+'_'+String(data.slip_no||'').replace(/[^a-z0-9]/gi,''),
+    recipients:[{phone_number:phone,custom_params:Object.entries(fields).map(([key,value])=>({
+      name:key,value:String(value).trim().slice(0,1024)
+    }))}]
   };
 }
 
@@ -114,24 +105,19 @@ Deno.serve(async (req) => {
     if (action !== 'status' && action !== 'dispatch') return reply(origin,{error:'Unsupported action'},400);
     const settings = await dbRequest('settings?id=eq.1&select=whatsapp_enabled&limit=1');
     const enabled = settings?.[0]?.whatsapp_enabled === true;
-    const token = Deno.env.get('WA_ACCESS_TOKEN') || '';
-    const phoneId = Deno.env.get('WA_PHONE_NUMBER_ID') || '';
-    const confirmedName = Deno.env.get('WA_TEMPLATE_CONFIRMED') || 'galoir_order_confirmed_v1';
-    const readyName = Deno.env.get('WA_TEMPLATE_READY') || 'galoir_ready_for_collection_v1';
-    const language = Deno.env.get('WA_TEMPLATE_LANGUAGE') || 'en';
-    const graph = Deno.env.get('WA_GRAPH_VERSION') || 'v25.0';
-    const configured = token.length>20 && /^[0-9]{5,25}$/.test(phoneId)
-      && /^[a-z0-9_]{1,512}$/.test(confirmedName)
-      && /^[a-z0-9_]{1,512}$/.test(readyName)
-      && /^[a-z_]{2,12}$/.test(language)
-      && /^v[0-9]{1,2}\.[0-9]$/.test(graph);
+    const token=Deno.env.get('WATI_API_TOKEN')||'';
+    const channel=String(Deno.env.get('WATI_CHANNEL_NUMBER')||'').replace(/\D/g,'');
+    const confirmedName=Deno.env.get('WATI_TEMPLATE_ORDER_CONFIRMED')||'galoir_order_finalised_wati_v1';
+    const readyName=Deno.env.get('WATI_TEMPLATE_READY_FOR_COLLECTION')||'galoir_ready_for_collection_wati_v1';
+    const configured=token.length>20&&/^[1-9]\d{10,14}$/.test(channel)
+      &&/^[a-z0-9_]{1,100}$/i.test(confirmedName)&&/^[a-z0-9_]{1,100}$/i.test(readyName);
     if (action === 'status') return reply(origin,{
       enabled, configured,
-      note: configured?'Credentials present. Meta template approval must also be confirmed.':'Missing WhatsApp Cloud API credentials.',
-      templates: {order_confirmation:confirmedName, ready_collection:readyName, language},
+      note: configured?'WATI token and channel present. Verify both Utility templates are approved in WATI.':'WATI API token or channel not configured.',
+      provider:'WATI v3',templates: {order_confirmation:confirmedName, ready_collection:readyName},
     });
     if (!enabled) return reply(origin,{enabled:false,configured,submitted:0,notice:'WhatsApp automation disabled by Admin'});
-    if (!configured) return reply(origin,{enabled:true,configured:false,submitted:0,notice:'WhatsApp credentials missing'});
+    if (!configured) return reply(origin,{enabled:true,configured:false,submitted:0,notice:'WATI token, channel or approved templates missing'});
     const queued = await dbRequest('galoir_whatsapp_outbox?status=eq.pending&order=created_at.asc&limit=10&select=*');
     let submitted = 0, failed = 0, skipped = 0;
     for (const row of queued||[]) {
@@ -142,21 +128,25 @@ Deno.serve(async (req) => {
       });
       if (!Array.isArray(claimed) || claimed.length !== 1) {skipped++;continue}
       try {
-        const payload = templateFor(row,{confirmedName,readyName,language});
-        const response = await fetch('https://graph.facebook.com/'+graph+'/'+phoneId+'/messages',{
+        const payload=templateFor(row,{confirmedName,readyName,channel});
+        const response=await fetch('https://live-mt-server.wati.io/api/ext/v3/messageTemplates/send',{
           method:'POST',
-          headers:{authorization:'Bearer '+token,'content-type':'application/json'},
+          headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json'},
           body:JSON.stringify(payload),
           signal:AbortSignal.timeout(18000),
         });
-        const body = await response.json().catch(()=>({}));
-        const messageId = body?.messages?.[0]?.id;
-        if (!response.ok || !messageId) {
-          throw new Error('Meta '+response.status+': '+String(body?.error?.message||'No message ID returned').slice(0,220));
+        const body=await response.json().catch(()=>({}));
+        const receivers=body?.receivers||body?.recipients||[];
+        const errors=Array.isArray(receivers)?receivers.flatMap(r=>r?.errors||[]):[];
+        if(!response.ok||body?.result===false||body?.error||errors.length){
+          throw new Error('WATI '+response.status+': '+String(body?.error||body?.message||
+            (errors.length?JSON.stringify(errors):'Template rejected')).slice(0,220));
         }
+        // Accepted by WATI does not prove final delivery.
+        const messageId=receivers?.[0]?.localMessageId||body?.localMessageId||body?.message_id||null;
         await dbRequest('galoir_whatsapp_outbox?id=eq.'+encodeURIComponent(row.id),{
           method:'PATCH',
-          data:{status:'submitted',submitted_at:new Date().toISOString(),provider_message_id:String(messageId),last_error:null},
+          data:{status:'submitted',submitted_at:new Date().toISOString(),provider_message_id:messageId?String(messageId):null,last_error:null},
         });
         submitted++;
       } catch (e) {
@@ -168,7 +158,7 @@ Deno.serve(async (req) => {
         failed++;
       }
     }
-    return reply(origin,{enabled:true,configured:true,submitted,failed,skipped,remaining:'Check notification log for pending entries'});
+    return reply(origin,{enabled:true,configured:true,submitted,failed,skipped,provider:'WATI v3',remaining:'Accepted by WATI; delivery/read in WATI dashboard'});
   } catch (_) {
     // Never leak service keys or request payloads in client-facing responses.
     return reply(origin,{error:'WhatsApp dispatch temporarily unavailable'},503);
