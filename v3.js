@@ -12,7 +12,7 @@ function maskCustomerPhone(value){
 function phoneForDisplay(value){return role==='sales'?maskCustomerPhone(value):String(value||'—')}
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
 let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
-const allowed={admin:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','scanner','alerts','customers','measurements','daily','tailoring']};
+const allowed={admin:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
 const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
 function notify(s){$('notice').textContent=s;$('notice').classList.remove('hidden');setTimeout(()=>$('notice').classList.add('hidden'),4500)}
@@ -212,7 +212,8 @@ function dashboardView(){
  const delivered=due.filter(o=>o.status==='delivered').length;
  const sent=master.filter(o=>o.master_room_sent_at).length;
  const overdueDelivery=orders.filter(o=>o.delivery_date<today&&o.status!=='delivered').length;
- return `<section class="panel status-lookup-panel">
+ return `${can('measurements')?`<div class="dashboard-top-actions"><button class="btn dashboard-new-measurement" type="button" id="dashboardNewMeasurement" aria-label="Create new measurement slip"><span class="dashboard-plus-icon" aria-hidden="true">+</span> New Measurement</button></div>`:''}
+ <section class="panel status-lookup-panel">
   <h3>Search Customer / Slip / Bill Status</h3>
   <p class="muted">Enter a customer phone number, GL slip number, or exact bill number to check whether the outfit is ready, sent to the master room, or not yet due.</p>
   <form id="statusSearchForm" role="search" class="status-search-form" autocomplete="off">
@@ -1042,6 +1043,15 @@ async function startReadyCamera(){
  }
 }
 function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();
+ on('dashboardNewMeasurement','click',()=>{
+  if(!can('measurements'))return notify('Your account cannot create measurement slips');
+  stopBarcodeScan();stopReadyCamera();
+  editingDraftId=null;
+  recordedAudio=null;
+  tab='measurements';
+  render();
+  if(typeof window.scrollTo==='function')window.scrollTo({top:0,behavior:'smooth'});
+ });
  on('statusSearchForm','submit',e=>{e.preventDefault();statusSearchQuery=String($('statusSearchInput')?.value||'').trim();if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults(statusSearchQuery)});
  on('statusSearchInput','input',e=>{statusSearchQuery=e.target.value;if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults(statusSearchQuery)});
  on('statusSearchClear','click',()=>{statusSearchQuery='';if($('statusSearchInput')){$('statusSearchInput').value='';$('statusSearchInput').focus()}if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults('')});
