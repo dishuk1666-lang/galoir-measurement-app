@@ -544,7 +544,6 @@ function settingsView(){
   ${!waEnabled&&role==='admin'?'<label class="wa-approval"><input type="checkbox" id="waTemplatesApproved" style="width:auto"> I have approved both Utility templates in WATI, verified our connected WhatsApp sending number, and will collect customer opt-in.</label>':''}
   <p class="muted">No messages will be sent until this integration is enabled by Admin. Newly finalized opted-in orders will be queued automatically after activation; already-billed orders are not contacted retroactively.</p>
   <p class="muted"><b>WATI setup:</b> WATI Connector → API → Create API Token (permission: messagetemplatev3:write). Set <code>WATI_API_TOKEN</code>, <code>WATI_CHANNEL_NUMBER</code>, <code>WATI_TEMPLATE_ORDER_CONFIRMED</code>, and <code>WATI_TEMPLATE_READY_FOR_COLLECTION</code> as Supabase Edge Function Secrets. Never enter the token in this browser.</p>
-  <p class="muted"></p>
   <div class="wa-count-grid"><div><strong>${pending}</strong><small>Pending</small></div><div><strong>${submitted}</strong><small>Accepted by WATI</small></div><div><strong>${failed}</strong><small>Need attention</small></div></div>
   <p class="muted">Submitted means WATI accepted the message request. Delivery/read receipts are not tracked yet. Showing the latest 60 queued records.</p>
   <div class="table-scroll"><table><tr><th>GL Slip</th><th>Notification</th><th>State</th><th>Event Time</th><th>Error</th></tr>${waRows||'<tr><td colspan="5">No notifications have been queued yet.</td></tr>'}</table></div>
