@@ -580,8 +580,9 @@ async function printSlip(m){
     const order=orders.find(x=>x.measurement_id===m.id);
     let photoURL='';
     if(m.photo_path){
-      const {data}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.photo_path,300);
-      photoURL=data?.signedUrl||'';
+      const {data,error:photoSignError}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.photo_path,900);
+      if(photoSignError||!data?.signedUrl)throw new Error('Reference photo could not be accessed. Reopen the slip and retry printing.');
+      photoURL=data.signedUrl;
     }
     const displayValue=v=>{
       if(v===null||v===undefined)return '';
@@ -660,13 +661,16 @@ async function printSlip(m){
         gap:7px;border-bottom:1px dotted #aaa;padding:4px 9px;min-width:0;min-height:28px}
       .measure-name{font-size:14px;font-weight:550;overflow-wrap:anywhere}
       .measure-value{font-size:18px;font-weight:800;text-align:right;overflow-wrap:anywhere;min-width:0}
-      .remarks-area{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:118px;flex-shrink:0}
-      .remark-panel{display:flex;flex-direction:column;min-width:0}
-      .remark-panel h3{font-size:15px;margin:0 0 5px;font-weight:800}
+      .remarks-area{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;min-height:118px;flex-shrink:0}
+      .remarks-area.with-photo{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 126px;min-height:134px}
+      .remark-panel,.reference-panel{display:flex;flex-direction:column;min-width:0}
+      .remark-panel h3,.reference-panel h3{font-size:14px;margin:0 0 5px;font-weight:800}
       .remark-box{flex:1;border:1px solid #aaa;padding:8px;min-height:86px;
         white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;font-weight:650;line-height:1.35}
-      .media-line{display:flex;align-items:center;gap:10px;font-size:11px;flex-shrink:0}
-      .reference-photo{width:auto;max-width:110px;max-height:72px;object-fit:contain}
+      .reference-image-box{display:flex;flex:1;align-items:center;justify-content:center;border:1px solid #aaa;padding:4px;background:white}
+      .reference-photo{display:block;width:auto;height:auto;max-width:114px;max-height:105px;object-fit:contain}
+      .photo-load-warning{font-size:12px;color:#a12a2a;font-weight:700}
+      .print-toolbar button:disabled{opacity:.55;cursor:not-allowed}
       .print-footer{padding-top:4px;border-top:1px solid #bbb;font-size:10px;color:#444;flex-shrink:0}
       /* Compact only when the measured content would otherwise overflow A4. */
       #printSheet.compact-print{gap:3px}
@@ -676,8 +680,9 @@ async function printSlip(m){
       .compact-print .measure-cell{min-height:25px;padding:2px 7px}
       .compact-print .measure-section h3{padding:5px 9px}
       .compact-print .remarks-area{min-height:96px}
+      .compact-print .remarks-area.with-photo{min-height:110px}
       .compact-print .remark-box{min-height:68px;padding:6px}
-      #printSheet.omit-print-photo .media-line{display:none!important}
+      .compact-print .reference-photo{max-height:84px}
       @page{size:A4 portrait;margin:8mm}
       @media print{
         html,body{width:194mm;margin:0!important;padding:0!important;background:#fff!important}
@@ -687,7 +692,7 @@ async function printSlip(m){
         body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
       }
     </style></head><body>
-    <div class="print-toolbar"><button type="button" id="printNow">Print A4 Tailor Slip</button></div>
+    <div class="print-toolbar"><button type="button" id="printNow">Print A4 Tailor Slip</button><p id="photoLoadWarning" class="photo-load-warning" hidden></p></div>
     <main id="printPage"><article id="printSheet">
       <header class="slip-header">
         <div class="brand-block"><div class="brand">GALOIR</div>
@@ -706,12 +711,13 @@ async function printSlip(m){
         <div class="detail"><span class="detail-label">${esc(key)}</span>
         <strong class="detail-value">${esc(displayValue(value))}</strong></div>`).join('')}</div>
       <div class="measurement-sections">${groups}</div>
-      <div class="remarks-area">
+      <div class="remarks-area ${photoURL?'with-photo':''}">
         <div class="remark-panel"><h3>REMARKS</h3><div class="remark-box">${esc(displayValue(m.remarks))}</div></div>
         <div class="remark-panel"><h3>FITTING INSTRUCTIONS</h3><div class="remark-box">${esc(displayValue(m.fitting_notes))}</div></div>
+        ${photoURL?`<div class="reference-panel"><h3>REFERENCE PHOTO</h3>
+          <div class="reference-image-box"><img class="reference-photo" id="refPhoto" src="${esc(photoURL)}" alt="Outfit reference photo"></div>
+        </div>`:''}
       </div>
-      ${photoURL?`<div class="media-line"><strong>REFERENCE PHOTO</strong>
-        <img class="reference-photo" id="refPhoto" src="${esc(photoURL)}" alt="Outfit reference"></div>`:''}
       <footer class="print-footer">Voice note: ${m.voice_path?'Attached digitally':'None'}
         · Video: ${m.video_path?'Attached digitally':'None'}
         · GALOIR Measurement Studio</footer>
@@ -724,19 +730,37 @@ async function printSlip(m){
       // Measure actual, unconstrained content. The old fixed-height flexbox
       // could shrink rows over one another while scrollHeight stayed one page.
       sheet.style.transform='none';
-      sheet.classList.remove('compact-print','omit-print-photo');
+      sheet.classList.remove('compact-print');
       const usableHeightPx=page?.clientHeight||279/25.4*96;
       const fits=()=>sheet.scrollHeight<=usableHeightPx-4;
       if(!fits())sheet.classList.add('compact-print');
-      // A photo is optional on paper. Always keep measurements and remarks legible.
-      if(!fits()&&m.photo_path)sheet.classList.add('omit-print-photo');
+      // Never remove an attached photo. Scale the complete printable content, including the image.
       const naturalHeight=sheet.scrollHeight;
       const scale=Math.min(1,(usableHeightPx-4)/Math.max(naturalHeight,1));
       sheet.style.transform='scale('+scale+')';
     }
-    win.document.getElementById('printNow').onclick=()=>{fitPage();win.focus();win.print()};
+    const printButton=win.document.getElementById('printNow');
+    const image=win.document.getElementById('refPhoto');
+    const photoWarning=win.document.getElementById('photoLoadWarning');
+    // Wait until the photo has actually loaded; otherwise browser print previews may omit it.
+    const photoReady=()=>{
+      fitPage();
+      if(printButton){printButton.disabled=false;printButton.textContent='Print A4 Tailor Slip'}
+    };
+    const photoFailed=()=>{
+      if(printButton){printButton.disabled=true;printButton.textContent='Reference photo unavailable'}
+      if(photoWarning){photoWarning.hidden=false;photoWarning.textContent='Photo could not be loaded. Reopen the slip before printing so it is not missing.'}
+    };
+    if(printButton)printButton.onclick=()=>{
+      if(image&&(!image.complete||!image.naturalWidth))return photoFailed();
+      fitPage();win.focus();win.print();
+    };
+    if(image){
+      if(printButton){printButton.disabled=true;printButton.textContent='Loading reference photo...'}
+      if(image.complete){if(image.naturalWidth)photoReady();else photoFailed()}
+      else{image.addEventListener('load',photoReady,{once:true});image.addEventListener('error',photoFailed,{once:true})}
+    }else photoReady();
     win.addEventListener('beforeprint',fitPage);
-    win.document.getElementById('refPhoto')?.addEventListener('load',fitPage);
     win.document.fonts?.ready.then(fitPage).catch(()=>{});
     fitPage();
   }catch(e){win.close();error(e)}
