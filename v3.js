@@ -189,7 +189,7 @@ function statusSlipPreviewHtml(m){
    <h4>${esc(measurementGroupDisplayName(g))}</h4>
    <div class="status-preview-grid">
     ${items.map(n=>`<div class="status-preview-cell"><span>${esc(n)}</span>
-     <strong>${esc(measureValue(m.values?.[g+' / '+n]))||'—'}</strong></div>`).join('')}
+     <strong>${esc(measureValue(measurementValue(m.values,g,n)))||'—'}</strong></div>`).join('')}
    </div>
   </section>`).join('');
  const deliver=[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean);
@@ -301,15 +301,24 @@ function alertsView(){return `<div class="panel"><h3>New Make · Contact supplie
 function customerOptions(){return customers.map(c=>`<option value="${c.id}">${esc(c.full_name)} — ${esc(phoneForDisplay(c.phone))}</option>`).join('')}
 function customersView(){return `${can("customers") ? `<div class="panel"><h3>Add customer</h3><form id="customerForm"><div class="fields"><div><label>Full name</label><input name="full_name" required maxlength="120"></div><div><label>Phone</label><input name="phone" required maxlength="30"></div><div class="span"><label>Notes</label><textarea name="notes" rows="2"></textarea></div></div><button class="btn">Save Customer</button></form></div>` : ""}<div class="panel"><h3>Customer profiles</h3><input id="searchCustomers"><div id="customerRows">${customerTable(customers)}</div></div>`}
 function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(phoneForDisplay(c.phone))}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
-const measureGroups={"Top / Ready / Body":["Length","Upper Chest","Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair"],"Salwar / Pant / Plazo":["Length","Poncha","Waist","Hip","Thigh","Calf","Ankle"]};
-function measurementGroupDisplayName(group){return group==='Lehenga / Sharara'?'Lehenga / Sharara / Saree':group}
+// Reuse the original Lehenga / Sharara storage keys to keep old slips compatible.
+const measureGroups={"Top / Ready / Body":["Length","Upper Chest","Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair","Thigh"]};
+function measurementGroupDisplayName(group){return group==='Lehenga / Sharara'?'Lehenga / Sharara / Saree / Pant':group}
+function measurementValue(values,group,name){
+ const key=group+' / '+name;
+ if(values&&Object.prototype.hasOwnProperty.call(values,key))return values[key];
+ // Existing Pant / Plazo measurements continue to appear for old slips.
+ if(group==='Lehenga / Sharara'&&['Length','Waist','Thigh'].includes(name))
+  return values?.['Salwar / Pant / Plazo / '+name]??'';
+ return '';
+}
 function measurementInputs(group,items){const current=measurements.find(m=>m.id===editingDraftId);return `<div class="panel span"><h3>${esc(measurementGroupDisplayName(group))} — numbers or tailor instructions</h3><div class="fields">${items.map(x=>`<div><label>${esc(x)}</label><input type="text" maxlength="120" name="m_${esc(group+' / '+x)}" value="${initialField(current,group,x)}"></div>`).join('')}</div></div>`}
 function makeOptions(){return `<option value="new_make">New Make — no daily limit</option><option value="self_alter">Self Alter — daily limit applies</option>`}
 function overrideFields(prefix){return `<div class="panel hidden override-box" id="${prefix}Override"><h3>Self Alter date full — supervisor password required</h3><p class="muted">An Admin or Manager must enter their own login email and password to approve this one extra booking. This approval expires after 3 minutes and cannot be reused.</p><div class="fields"><div><label>Supervisor email</label><input type="email" name="reviewer_email" autocomplete="off"></div><div><label>Supervisor password</label><input type="password" name="reviewer_password" autocomplete="off"></div></div></div>`}
 function phoneDigits(v){let d=String(v||'').replace(/\D/g,'');return d.length===12&&d.startsWith('91')?d.slice(2):d}
 function phoneMatches(v){const q=phoneDigits(v);return q.length>=7?customers.filter(c=>phoneDigits(c.phone)===q):[]}
 function lastMeasurement(customerId){return measurements.filter(m=>m.customer_id===customerId).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0]||null}
-function initialField(draft,group,name){return esc(draft?.values?.[group+' / '+name]??'')}
+function initialField(draft,group,name){return esc(measurementValue(draft?.values,group,name))}
 function customerNamePhone(draft){return customers.find(c=>c.id===draft?.customer_id)||null}
 function preparationLeadTimeMessage(date,days){
  const lead=Number(days);
@@ -741,7 +750,7 @@ async function printSlip(m){
         <div class="measure-grid">${printOrder.map(name=>`
           <div class="measure-cell">
             <span class="measure-name">${esc(name)}</span>
-            <strong class="measure-value">${esc(displayValue(m.values?.[title+' / '+name]))}</strong>
+            <strong class="measure-value">${esc(displayValue(measurementValue(m.values,title,name)))}</strong>
           </div>`).join('')}
         </div>
       </section>`;
@@ -918,7 +927,13 @@ function refillLastMeasurements(customerId){
  if(!customerId)return;
  const m=lastMeasurement(customerId);if(!m)return;
  const form=$('measurementForm');if(!form)return;
- Object.entries(m.values||{}).forEach(([key,val])=>{const el=form.elements.namedItem('m_'+key);if(el)el.value=String(val??'')});
+ // Refill the unified lower section, including legacy Pant thigh measurements.
+ for(const [group,items] of Object.entries(measureGroups)){
+  for(const name of items){
+   const el=form.elements.namedItem('m_'+group+' / '+name);
+   if(el)el.value=String(measurementValue(m.values,group,name)??'');
+  }
+ }
  const keys=['company_name','reviewed_by','ready_body','lehenga_style','bottom_style','fitting_notes','remarks'];
  keys.forEach(k=>{const el=form.elements.namedItem(k);if(el&&m[k]!=null)el.value=String(m[k])});
  for(const key of ['deliver_top','deliver_bottom','deliver_dupatta']){const el=form.elements.namedItem(key);if(el)el.checked=!!m[key]}
@@ -1094,10 +1109,22 @@ on('measurementForm','submit',async e=>{
  e.preventDefault();
  if(activeRecorder?.state==='recording')return notify('Stop voice recording before saving the draft');
  stopBarcodeScan();
- const f=new FormData(e.target),values={};
+ const f=new FormData(e.target);
+ // Keep old non-visible Pant / Plazo fields in a previously saved draft.
+ const original=editingDraftId?measurements.find(x=>x.id===editingDraftId)?.values||{}:{};
+ const values={...original};
  const leadProblem=preparationLeadTimeMessage(String(f.get('delivery_date')||''),f.get('days_required')||3);
  if(leadProblem)return notify(leadProblem);
- for(const [group,items] of Object.entries(measureGroups)){for(const name of items){const key=group+' / '+name,v=String(f.get('m_'+key)||'').trim();if(v)values[key]=v}}
+ for(const [group,items] of Object.entries(measureGroups)){
+  for(const name of items){
+   const key=group+' / '+name,v=String(f.get('m_'+key)||'').trim();
+   if(v)values[key]=v;
+   else if(group==='Lehenga / Sharara'&&['Length','Waist','Thigh'].includes(name)
+     &&Object.prototype.hasOwnProperty.call(original,'Salwar / Pant / Plazo / '+name))
+    values[key]=''; // Prevent cleared values reappearing from legacy records.
+   else delete values[key];
+  }
+ }
  const photo=f.get('photo_file');
  const deviceVideo=f.get('video_file'),cameraVideo=f.get('video_camera');
  const videoSelections=[deviceVideo,cameraVideo].filter(file=>file instanceof File&&file.size>0);
