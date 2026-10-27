@@ -153,9 +153,9 @@
 /* Staff-only home dashboard: lookup by phone or GL slip and show operational status */
 .status-lookup-panel{margin-bottom:18px}
 .status-lookup-panel h3{margin:0 0 8px;font-size:20px}
-.status-search-form{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:14px 0}
-.status-search-form input{flex:1 1 260px;max-width:600px;min-width:0;font-size:16px;padding:12px}
-.status-search-form .btn{white-space:nowrap}
+.status-search-form{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;margin:14px 0}
+.status-search-form input[type="search"]{width:100%;min-width:0;max-width:none;height:46px!important;min-height:46px!important;max-height:46px!important;flex:none!important;line-height:22px;padding:10px 13px;font-size:16px;box-sizing:border-box;align-self:center;-webkit-appearance:none;appearance:none}
+.status-search-form .btn{white-space:nowrap;min-height:46px}
 .status-lookup-message{padding:13px;border:1px solid #d4c0ad;background:#fff8eb;border-radius:9px}
 .status-result-count{font-size:13px;font-weight:750;color:#625951;margin:8px 0 12px}
 .status-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -176,22 +176,12 @@
 .status-result-details strong{display:block;overflow-wrap:anywhere;font-size:14px}
 .status-description{margin:4px 0 0;font-size:12px;line-height:1.5;color:#5e554b;border-top:1px dashed #e2dcd4;padding-top:10px}
 @media(max-width:950px){.status-result-grid{grid-template-columns:1fr}}
+@media(max-width:700px){
+ .status-search-form{grid-template-columns:minmax(0,1fr);align-items:stretch}
+ .status-search-form input[type="search"]{height:46px!important;min-height:46px!important;max-height:46px!important;align-self:stretch}
+ .status-search-form .btn{width:100%}
+}
 @media(max-width:480px){
- .status-search-form{flex-direction:column}
- /* In column flex layout, the desktop 260px flex-basis becomes input HEIGHT. */
- .status-search-form input[type="search"]{
-   flex:0 0 auto;
-   width:100%;
-   max-width:100%;
-   height:46px;
-   min-height:46px;
-   max-height:46px;
-   line-height:22px;
-   padding:10px 13px;
-   font-size:16px;
-   align-self:stretch;
- }
- .status-search-form .btn{width:100%;flex:0 0 auto}
  .status-result-top>strong{font-size:18px}
  .status-result-card{padding:12px}
 }
