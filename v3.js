@@ -4,7 +4,7 @@ const cfg=window.GALOIR_CONFIG||{};const ready=cfg.supabaseUrl?.startsWith('http
 const sb=ready?createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,month=new Date(),selectedDate=today;
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',month=new Date(),selectedDate=today;
 const allowed={admin:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','scanner','alerts','customers','measurements','daily','tailoring']};
 const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
@@ -60,12 +60,89 @@ function worklistRow(o,kind){
  </label>
  </article>`;
 }
+function phoneStatusMatch(phone,search){
+ const full=String(phone||'').replace(/\D/g,''),term=String(search||'').replace(/\D/g,'');
+ if(term.length<7||term.length>15)return false;
+ if(full===term)return true;
+ return term.length===10&&full==='91'+term || term.length===12&&term.startsWith('91')&&full===term.slice(2);
+}
+function computeOutfitStatus(order){
+ if(!order)return {label:'Awaiting Billing',cls:'draft',note:'Unbilled draft. No delivery date is confirmed yet.'};
+ if(order.status==='delivered')return {label:'Delivered',cls:'delivered',note:'Customer delivery is marked complete.'};
+ if(order.is_ready)return {label:'Ready',cls:'ready',note:'Outfit has been marked ready. Confirm pickup arrangements with the store.'};
+ const due=String(order.delivery_date||'');
+ if(due&&due<today)return {label:'Delivery Overdue',cls:'overdue',note:'Scheduled delivery date has passed. Store staff should confirm a revised date.'};
+ if(order.order_type==='self_alter'){
+  if(order.master_room_sent_at)return {label:'Sent to Master Room',cls:'master',note:'Alteration work is in progress. The outfit is not yet marked ready.'};
+  if(masterRoomDate(order)>today)return {label:'Date Not Due',cls:'notdue',note:'Master-room preparation is scheduled for '+outputDate(masterRoomDate(order))+'.'};
+  return {label:'Send to Master Room',cls:'attention',note:'Preparation date has arrived; outfit is awaiting master-room handoff.'};
+ }
+ if(due&&daysUntil(due)>2)return {label:'Date Not Due',cls:'notdue',note:'New Make order is booked. Supplier follow-up is scheduled two days before delivery.'};
+ if(!order.supplier_notified_at)return {label:'Supplier Follow-Up Due',cls:'attention',note:'New Make supplier should be contacted to confirm readiness.'};
+ return {label:'Awaiting Supplier',cls:'master',note:'Supplier has been notified. Outfit is not yet marked ready.'};
+}
+function statusLookupResults(query){
+ const raw=String(query||'').trim();
+ if(!raw)return '<p class="muted">Enter a customer phone number or GL slip number to check its status.</p>';
+ const slip=raw.toUpperCase().replace(/[\s-]/g,'');
+ const isSlip=/^GL\d{1,16}$/.test(slip);
+ const isPhone=/^[+()\d\s-]+$/.test(raw)&&/^\d{7,15}$/.test(raw.replace(/\D/g,''));
+ if(!isSlip&&!isPhone)return '<p class="status-lookup-message">Enter a complete phone number or a GL slip number such as GL2001.</p>';
+ let foundMeasurements=[],foundOrders=[];
+ if(isSlip){
+  foundMeasurements=measurements.filter(m=>String(m.slip_no||'').toUpperCase()===slip);
+  const slipIds=new Set(foundMeasurements.map(m=>m.id));
+  foundOrders=orders.filter(o=>slipIds.has(o.measurement_id));
+ }else{
+  const custIds=new Set(customers.filter(c=>phoneStatusMatch(c.phone,raw)).map(c=>c.id));
+  foundMeasurements=measurements.filter(m=>custIds.has(m.customer_id));
+  foundOrders=orders.filter(o=>custIds.has(o.customer_id));
+ }
+ const bySlip=new Map(foundOrders.filter(o=>o.measurement_id).map(o=>[o.measurement_id,o]));
+ const results=foundMeasurements.map(m=>({m,o:bySlip.get(m.id)||null}));
+ const linkedOrderIds=new Set(results.map(r=>r.o?.id).filter(Boolean));
+ for(const o of foundOrders)if(!linkedOrderIds.has(o.id))results.push({m:null,o});
+ if(!results.length)return '<p class="status-lookup-message">No matching measurement slip or booking found.</p>';
+ results.sort((a,b)=>String(b.o?.delivery_date||b.m?.created_at||'').localeCompare(String(a.o?.delivery_date||a.m?.created_at||'')));
+ const count=results.length;
+ const cards=results.slice(0,60).map(({m,o})=>{
+  const c=customers.find(x=>x.id===(m?.customer_id||o?.customer_id));
+  const state=computeOutfitStatus(o),due=String(o?.delivery_date||'');
+  const expectation=!o?'Not confirmed — billing pending':due&&due<today&&o.status!=='delivered'?
+   'Overdue (booked '+outputDate(due)+')':outputDate(due);
+  const makeType=o?.order_type||m?.order_type;
+  return `<article class="status-result-card">
+   <div class="status-result-top"><strong>${esc(m?.slip_no||'Booking without GL slip')}</strong>
+     <span class="status-pill ${state.cls}">${esc(state.label)}</span></div>
+   <div class="status-result-details">
+    <div><span>Customer</span><strong>${esc(c?.full_name||'Customer')}</strong></div>
+    <div><span>Phone</span><strong>${esc(c?.phone||'—')}</strong></div>
+    <div><span>Outfit</span><strong>${esc(o?.item_name||m?.item_name||'—')}</strong></div>
+    <div><span>Order Type</span><strong>${makeType==='new_make'?'New Make':'Self Alter'}</strong></div>
+    <div><span>Expected Delivery</span><strong>${esc(expectation)}</strong></div>
+    <div><span>Master Room Date</span><strong>${o?.order_type==='self_alter'?esc(outputDate(masterRoomDate(o))):'—'}</strong></div>
+   </div><p class="status-description">${esc(state.note)}${o&&due>=today&&o.status!=='delivered'?' This is the booked delivery date, subject to outfit readiness.':''}</p>
+  </article>`;
+ }).join('');
+ return `<p class="status-result-count">${count} matching record${count===1?'':'s'}${count>60?' · showing first 60':''}</p>
+ <div class="status-result-grid">${cards}</div>`;
+}
 function dashboardView(){
  const due=deliveriesToday(),master=masterRoomToday();
  const delivered=due.filter(o=>o.status==='delivered').length;
  const sent=master.filter(o=>o.master_room_sent_at).length;
  const overdueDelivery=orders.filter(o=>o.delivery_date<today&&o.status!=='delivered').length;
- return `<div class="dashboard-summary">
+ return `<section class="panel status-lookup-panel">
+  <h3>Search Customer / Slip Status</h3>
+  <p class="muted">Enter a customer phone number or GL slip number to check whether the outfit is ready, sent to the master room, or not yet due.</p>
+  <form id="statusSearchForm" role="search" class="status-search-form" autocomplete="off">
+   <input type="search" id="statusSearchInput" maxlength="35" value="${esc(statusSearchQuery)}" placeholder="Customer phone or GL2001" aria-label="Search by customer phone or GL slip number">
+   <button class="btn" type="submit">Search Status</button>
+   <button class="btn alt" type="button" id="statusSearchClear">Clear</button>
+  </form>
+  <div id="statusSearchResults" aria-live="polite">${statusLookupResults(statusSearchQuery)}</div>
+ </section>
+ <div class="dashboard-summary">
   <div class="card"><div class="muted">Deliver today</div><div class="stat">${due.length-delivered}<small> remaining / ${due.length} total</small></div></div>
   <div class="card"><div class="muted">Send to master room</div><div class="stat">${master.length-sent}<small> pending / ${master.length} today</small></div></div>
   <div class="card"><div class="muted">Overdue deliveries</div><div class="stat">${overdueDelivery}</div></div>
@@ -812,7 +889,11 @@ async function startReadyCamera(){
   if(status)status.textContent='Camera scanner unavailable: '+(e.message||e)+'. Use a handheld barcode scanner or type the GL number.';
  }
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();on('openAlerts','click',()=>{tab='alerts';render()});on('openReadyScanner','click',()=>{stopBarcodeScan();tab='scanner';render()});on('readyScannerForm','submit',async e=>{e.preventDefault();try{await markReadyByScannedCode($('readySlipInput')?.value)}catch(err){error(err);if($('readyScanStatus'))$('readyScanStatus').textContent='Scan error: '+(err.message||err)}});on('startReadyCamera','click',startReadyCamera);on('stopReadyCamera','click',stopReadyCamera);on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();
+ on('statusSearchForm','submit',e=>{e.preventDefault();statusSearchQuery=String($('statusSearchInput')?.value||'').trim();if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults(statusSearchQuery)});
+ on('statusSearchInput','input',e=>{statusSearchQuery=e.target.value;if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults(statusSearchQuery)});
+ on('statusSearchClear','click',()=>{statusSearchQuery='';if($('statusSearchInput')){$('statusSearchInput').value='';$('statusSearchInput').focus()}if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults('')});
+ on('openAlerts','click',()=>{tab='alerts';render()});on('openReadyScanner','click',()=>{stopBarcodeScan();tab='scanner';render()});on('readyScannerForm','submit',async e=>{e.preventDefault();try{await markReadyByScannedCode($('readySlipInput')?.value)}catch(err){error(err);if($('readyScanStatus'))$('readyScanStatus').textContent='Scan error: '+(err.message||err)}});on('startReadyCamera','click',startReadyCamera);on('stopReadyCamera','click',stopReadyCamera);on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
 on('slipPhone','input',()=>{if($('forceNewCustomerValue'))$('forceNewCustomerValue').value='false';updatePhoneLookup()});
 on('slipPhone','blur',()=>{const matches=phoneMatches($('slipPhone')?.value);if(matches.length===1&&!editingDraftId&&$('forceNewCustomerValue')?.value!=='true')refillLastMeasurements(matches[0].id)});
 on('slipCustomerSelect','change',e=>refillLastMeasurements(e.target.value));
