@@ -100,4 +100,51 @@
 .preparation-lead-warning{display:block;grid-column:1/-1;margin:5px 0 12px;padding:12px 14px;border:2px solid #b94a42;border-radius:8px;background:#fff0ed;color:#872923;font-weight:700;font-size:14px;line-height:1.5}
 .color-calendar-trigger.prep-invalid{border:2px solid #b94a42;box-shadow:0 0 0 2px rgba(185,74,66,.13)}
 @media(max-width:560px){.preparation-lead-warning{font-size:13px;padding:10px 12px}}
+
+/* Two daily operational columns: master-room handoff and customer deliveries */
+.dashboard-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.dashboard-summary .card{margin:0;min-width:0}
+.dashboard-summary .stat{font-size:28px}
+.dashboard-summary .stat small{font:12px Inter,system-ui,sans-serif;color:#766d65}
+.dashboard-two-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.dashboard-worklist{min-width:0;max-height:72vh;overflow-y:auto;scrollbar-width:thin}
+.dashboard-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.dashboard-list-heading h3{font-size:19px;margin:0}
+.dashboard-list-heading>span{background:#eeeae4;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:750;white-space:nowrap}
+.worklist-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid #e8e1d7;min-width:0}
+.worklist-row.worklist-checked{background:#f4faf4}
+.worklist-entry{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:13px}
+.worklist-entry strong{font-size:14px;overflow-wrap:anywhere}
+.worklist-entry span{overflow-wrap:anywhere}
+.worklist-date{font-size:11px;color:#857263}
+.worklist-status{font-size:11px;font-weight:700;color:#397249}
+.worklist-check{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;min-width:115px;margin:0;color:#28231f;font-size:12px;font-weight:700}
+.worklist-check input[type=checkbox]{width:23px;height:23px;accent-color:#247746;cursor:pointer}
+.worklist-check input:disabled{cursor:not-allowed}
+.dashboard-empty{color:#766d65;padding:24px 5px;text-align:center}
+.scan-dashboard-cta{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.scan-dashboard-cta h3{margin-bottom:5px}
+.scan-dashboard-cta .muted{margin:0}
+.ready-scanner-row{display:flex;align-items:center;gap:10px}
+.ready-scanner-row input{min-width:0;max-width:430px;flex:1}
+.ready-scanner-row button{flex:0 0 auto}
+.ready-scanner-panel{max-width:850px}
+.scan-success{margin-top:16px;padding:14px;border:1.5px solid #61a777;background:#edfaef;border-radius:10px}
+.scan-success strong{color:#226539}
+.scan-success p{margin-bottom:0}
+@media(max-width:1100px){
+.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dashboard-two-columns{grid-template-columns:1fr}
+.dashboard-worklist{max-height:none}
+}
+@media(max-width:560px){
+.dashboard-summary{gap:8px}
+.dashboard-summary .card{padding:12px}
+.dashboard-summary .stat{font-size:24px}
+.dashboard-list-heading h3{font-size:16px}
+.worklist-check{min-width:88px}
+.scan-dashboard-cta{flex-direction:column;align-items:stretch}
+.ready-scanner-row{flex-direction:column;align-items:stretch}
+.ready-scanner-row input{max-width:none}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
