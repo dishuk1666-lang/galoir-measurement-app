@@ -548,61 +548,77 @@ async function printSlip(m){
       .print-toolbar{padding:13px;text-align:center}
       .print-toolbar button{border:0;border-radius:7px;padding:11px 24px;background:#25211e;color:#fff;font-size:15px;cursor:pointer}
       #printPage{width:194mm;height:279mm;overflow:hidden;background:#fff;margin:0 auto 22px;box-shadow:0 2px 18px #0002}
-      #printSheet{width:194mm;height:279mm;display:flex;flex-direction:column;gap:8px;padding:0 1mm;
-        font-size:14px;line-height:1.22;transform-origin:top left}
+      #printSheet{width:194mm;min-height:279mm;height:auto;display:flex;flex-direction:column;gap:6px;padding:0 1mm;
+        font-size:14px;line-height:1.22;transform-origin:top left;overflow:visible}
       .slip-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
-        padding:4px 3px 10px;border-bottom:2px solid #292521}
+        padding:2px 3px 6px;border-bottom:2px solid #292521;flex-shrink:0}
+      .brand-block{flex:1 1 auto;min-width:0}
+      .header-barcode{flex:0 1 46%;max-width:325px;min-width:205px;text-align:right;display:flex;
+        flex-direction:column;align-items:flex-end;gap:2px}
+      .header-barcode .slip-title{font-size:12px;font-weight:800;letter-spacing:.35px}
+      .header-barcode .tailor-slip-barcode{display:block;width:100%;height:64px;max-width:320px;min-width:0}
+      .header-barcode .barcode-hint{font-size:9px;font-weight:700;letter-spacing:.35px;color:#48413a}
       .brand{font-size:30px;font-weight:800;letter-spacing:1px}
       .address{font-size:11px;line-height:1.4}
       .slip-title{text-align:right;font-size:13px;font-weight:700}
       .slip-number{font-size:23px;font-weight:850;margin-top:4px}
-      .priority-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:2px solid #333;background:#f3f3f3}
-      .priority-cell{min-width:0;padding:9px 10px;border-right:1px solid #777}
+      .priority-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:2px solid #333;background:#f3f3f3;flex-shrink:0}
+      .priority-cell{min-width:0;padding:7px 9px;border-right:1px solid #777}
       .priority-cell:last-child{border-right:0}
       .priority-label{display:block;color:#333;font-weight:800;font-size:11px;letter-spacing:.65px;margin-bottom:5px}
       .priority-value{display:block;font-size:20px;line-height:1.2;font-weight:850;overflow-wrap:anywhere}
       .slip-id{font-size:23px}
-      .print-barcode-block{display:flex;align-items:center;justify-content:center;gap:15px;break-inside:avoid;min-height:75px;border-bottom:1px solid #bcbcbc;padding:4px 6px}
-      .print-barcode-block .barcode-caption{font-size:11px;line-height:1.35;font-weight:800;color:#242424;max-width:160px}
-      .tailor-slip-barcode{max-width:345px;height:72px;flex:1 1 auto;min-width:0}
-      .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 9px}
+      .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 9px;flex-shrink:0}
       .detail{display:flex;justify-content:space-between;align-items:baseline;gap:5px;
-        border-bottom:1px dotted #b7b7b7;min-width:0;min-height:29px;padding:6px 2px}
+        border-bottom:1px dotted #b7b7b7;min-width:0;min-height:27px;padding:5px 2px}
       .detail-label{font-size:12px;color:#4e4e4e;flex:0 0 auto}
       .detail-value{font-size:14px;font-weight:700;text-align:right;overflow-wrap:anywhere;min-width:0}
-      .measurement-sections{display:flex;flex-direction:column;flex:1 1 auto;gap:9px;min-height:0}
-      .measure-section{display:flex;flex-direction:column;flex:var(--rows) 1 auto;break-inside:avoid;min-height:0}
+      .measurement-sections{display:flex;flex-direction:column;flex:1 0 auto;gap:6px;min-height:min-content}
+      .measure-section{display:flex;flex-direction:column;flex:var(--rows) 1 auto;break-inside:avoid;min-height:max-content}
       .measure-section h3{font-size:15px;font-weight:800;margin:0;background:#dedede;
         padding:7px 10px;letter-spacing:.2px}
       .measure-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
-        grid-auto-rows:minmax(29px,1fr);column-gap:15px;flex:1 1 auto}
+        grid-auto-rows:minmax(28px,1fr);column-gap:15px;flex:1 0 auto}
       .measure-cell{display:grid;grid-template-columns:42% minmax(0,1fr);align-items:center;
-        gap:7px;border-bottom:1px dotted #aaa;padding:4px 9px;min-width:0}
+        gap:7px;border-bottom:1px dotted #aaa;padding:4px 9px;min-width:0;min-height:28px}
       .measure-name{font-size:14px;font-weight:550;overflow-wrap:anywhere}
       .measure-value{font-size:18px;font-weight:800;text-align:right;overflow-wrap:anywhere;min-width:0}
-      .remarks-area{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:140px}
+      .remarks-area{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:118px;flex-shrink:0}
       .remark-panel{display:flex;flex-direction:column;min-width:0}
       .remark-panel h3{font-size:15px;margin:0 0 5px;font-weight:800}
-      .remark-box{flex:1;border:1px solid #aaa;padding:10px;min-height:115px;
+      .remark-box{flex:1;border:1px solid #aaa;padding:8px;min-height:86px;
         white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;font-weight:650;line-height:1.35}
-      .media-line{display:flex;align-items:center;gap:10px;font-size:11px}
-      .reference-photo{width:auto;max-width:120px;max-height:90px;object-fit:contain}
-      .print-footer{padding-top:5px;border-top:1px solid #bbb;font-size:10px;color:#444}
+      .media-line{display:flex;align-items:center;gap:10px;font-size:11px;flex-shrink:0}
+      .reference-photo{width:auto;max-width:110px;max-height:72px;object-fit:contain}
+      .print-footer{padding-top:4px;border-top:1px solid #bbb;font-size:10px;color:#444;flex-shrink:0}
+      /* Compact only when the measured content would otherwise overflow A4. */
+      #printSheet.compact-print{gap:3px}
+      .compact-print .detail{min-height:24px;padding:3px 2px}
+      .compact-print .priority-cell{padding:5px 7px}
+      .compact-print .measure-grid{grid-auto-rows:minmax(25px,1fr)}
+      .compact-print .measure-cell{min-height:25px;padding:2px 7px}
+      .compact-print .measure-section h3{padding:5px 9px}
+      .compact-print .remarks-area{min-height:96px}
+      .compact-print .remark-box{min-height:68px;padding:6px}
+      #printSheet.omit-print-photo .media-line{display:none!important}
       @page{size:A4 portrait;margin:8mm}
       @media print{
         html,body{width:194mm;margin:0!important;padding:0!important;background:#fff!important}
         .print-toolbar{display:none!important}
         #printPage{width:194mm;height:279mm;margin:0;box-shadow:none;overflow:hidden}
-        #printSheet{width:194mm;height:279mm}
+        #printSheet{width:194mm;min-height:279mm;height:auto}
         body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
       }
     </style></head><body>
     <div class="print-toolbar"><button type="button" id="printNow">Print A4 Tailor Slip</button></div>
     <main id="printPage"><article id="printSheet">
       <header class="slip-header">
-        <div><div class="brand">GALOIR</div>
+        <div class="brand-block"><div class="brand">GALOIR</div>
           <div class="address">J-79, Rajouri Garden Main Market, New Delhi-110027</div></div>
-        <div class="slip-title">TAILOR ORDER SLIP</div>
+        <div class="header-barcode"><div class="slip-title">TAILOR ORDER SLIP</div>
+          ${slipCode39Svg(m.slip_no)}
+          <div class="barcode-hint">SCAN GL BARCODE WHEN OUTFIT IS READY</div>
+        </div>
       </header>
       <div class="priority-strip" aria-label="Important tailor details">
         <div class="priority-cell"><span class="priority-label">SLIP NUMBER</span><strong class="priority-value slip-id">${esc(m.slip_no||'—')}</strong></div>
@@ -612,7 +628,6 @@ async function printSlip(m){
       <div class="order-details">${details.map(([key,value])=>`
         <div class="detail"><span class="detail-label">${esc(key)}</span>
         <strong class="detail-value">${esc(displayValue(value))}</strong></div>`).join('')}</div>
-      <div class="print-barcode-block"><span class="barcode-caption">UNIQUE TAILOR SLIP BARCODE<br>SCAN WHEN OUTFIT IS READY</span>${slipCode39Svg(m.slip_no)}</div>
       <div class="measurement-sections">${groups}</div>
       <div class="remarks-area">
         <div class="remark-panel"><h3>REMARKS</h3><div class="remark-box">${esc(displayValue(m.remarks))}</div></div>
@@ -627,9 +642,17 @@ async function printSlip(m){
     win.document.open();win.document.write(doc);win.document.close();
     function fitPage(){
       const sheet=win.document.getElementById('printSheet');
+      const page=win.document.getElementById('printPage');
       if(!sheet)return;
+      // Measure actual, unconstrained content. The old fixed-height flexbox
+      // could shrink rows over one another while scrollHeight stayed one page.
       sheet.style.transform='none';
-      const usableHeightPx=279/25.4*96;
+      sheet.classList.remove('compact-print','omit-print-photo');
+      const usableHeightPx=page?.clientHeight||279/25.4*96;
+      const fits=()=>sheet.scrollHeight<=usableHeightPx-4;
+      if(!fits())sheet.classList.add('compact-print');
+      // A photo is optional on paper. Always keep measurements and remarks legible.
+      if(!fits()&&m.photo_path)sheet.classList.add('omit-print-photo');
       const naturalHeight=sheet.scrollHeight;
       const scale=Math.min(1,(usableHeightPx-4)/Math.max(naturalHeight,1));
       sheet.style.transform='scale('+scale+')';
@@ -637,6 +660,7 @@ async function printSlip(m){
     win.document.getElementById('printNow').onclick=()=>{fitPage();win.focus();win.print()};
     win.addEventListener('beforeprint',fitPage);
     win.document.getElementById('refPhoto')?.addEventListener('load',fitPage);
+    win.document.fonts?.ready.then(fitPage).catch(()=>{});
     fitPage();
   }catch(e){win.close();error(e)}
 }
