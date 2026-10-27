@@ -20,7 +20,7 @@ function activeOrders(){return orders.filter(o=>o.status!=='delivered'&&!o.is_re
 function supplierAlerts(){return activeOrders().filter(o=>o.order_type==='new_make'&&!o.supplier_notified_at&&daysUntil(o.delivery_date)<=2)}
 function alterationAlerts(){return activeOrders().filter(o=>o.order_type!=='new_make'&&daysUntil(o.delivery_date)<=Number(o.days_required??2))}
 function outputDate(d){return d?new Date(d+'T12:00:00').toLocaleDateString('en-IN'):'—'}
-function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
+function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
 function masterRoomDate(o){
  const delivery=Date.parse(String(o.delivery_date||'')+'T00:00:00Z');
  if(!Number.isFinite(delivery))return '';
@@ -439,6 +439,25 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
   }catch(err){error(err)}finally{if(submit&&submit.isConnected)submit.disabled=false}
  });
 });
+
+ document.querySelectorAll('[data-master-id]').forEach(el=>el.onchange=async()=>{
+  const next=el.checked;el.disabled=true;
+  try{
+   const {error:e}=await sb.rpc('set_master_room_sent',{p_order_id:el.dataset.masterId,p_sent:next});
+   if(e)throw e;
+   notify(next?'Marked as sent to master room':'Master-room handoff reopened');
+   await refresh();
+  }catch(e){el.checked=!next;error(e)}finally{if(el.isConnected)el.disabled=false}
+ });
+ document.querySelectorAll('[data-deliver-id]').forEach(el=>el.onchange=async()=>{
+  const next=el.checked;el.disabled=true;
+  try{
+   const {error:e}=await sb.rpc('set_outfit_delivered',{p_order_id:el.dataset.deliverId,p_delivered:next});
+   if(e)throw e;
+   notify(next?'Outfit marked delivered':'Delivery marked as not delivered');
+   await refresh();
+  }catch(e){el.checked=!next;error(e)}finally{if(el.isConnected)el.disabled=false}
+ });
 }
 function updateOverrideVisibility(prefix){const type=$(prefix==='slip'?'slipType':'bookingType')?.value,date=$(prefix==='slip'?'slipDate':'bookingDate')?.value,panel=$(prefix+'Override');if(panel)panel.classList.toggle('hidden',!(type==='self_alter'&&date&&countDate(date)>=capacity))}
 async function getOverrideForBooking(formData,type,date){if(type!=='self_alter'||countDate(date)<capacity)return null;const email=String(formData.get('reviewer_email')||'').trim(),password=String(formData.get('reviewer_password')||'');if(!email||!password)throw Error('Self Alter date is full — Admin/Manager login email and password required');const reviewer=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'galoir-one-time-supervisor'}});try{const {error:e}=await reviewer.auth.signInWithPassword({email,password});if(e)throw Error('Supervisor password incorrect or account unavailable');const {data,error:issueError}=await reviewer.rpc('issue_booking_override',{p_delivery_date:date});if(issueError)throw Error('Only an active Admin or Manager can authorize: '+issueError.message);return data}finally{try{await reviewer.auth.signOut({scope:'local'})}catch(_){}}}
@@ -686,7 +705,86 @@ async function startBarcodeScan(){
   }
  }catch(err){stopBarcodeScan();if(msg)msg.textContent='Camera scanner unavailable: '+(err?.message||err)+'. You can enter or scan the barcode manually.'}
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
+function normalizeSlipBarcode(raw){return String(raw||'').trim().toUpperCase().replace(/^\*/,'').replace(/\*$/,'').replace(/[\s-]/g,'')}
+let readyCameraControls=null,readyCameraStream=null,readyCameraSession=0,readyBusy=false;
+function stopReadyCamera(){
+ ++readyCameraSession;
+ try{readyCameraControls?.stop?.()}catch(_){}
+ readyCameraControls=null;
+ readyCameraStream?.getTracks?.().forEach(t=>t.stop());readyCameraStream=null;
+ const video=$('readyScanVideo');
+ if(video){try{video.pause()}catch(_){}video.srcObject=null;video.classList.add('hidden')}
+ $('stopReadyCamera')?.classList.add('hidden');
+}
+async function markReadyByScannedCode(raw){
+ if(readyBusy)return;
+ const code=normalizeSlipBarcode(raw);
+ if(!/^GL[0-9]{1,16}$/.test(code))throw Error('Scan the unique GL barcode on the tailor slip, for example GL2001');
+ readyBusy=true;
+ try{
+  const {data,error:e}=await sb.rpc('mark_outfit_ready_by_slip',{p_slip_no:code});
+  if(e)throw e;
+  stopReadyCamera();lastReadyScanResult=data;
+  await refresh();
+  const scanStatus=$('readyScanStatus');
+  if(scanStatus)scanStatus.textContent=(data.already_ready?'Already ready':'Successfully marked READY')+' · '+data.slip_no+' · '+(data.customer_name||'Customer');
+  if($('readySlipInput')){$('readySlipInput').value='';$('readySlipInput').focus()}
+  notify(data.slip_no+(data.already_ready?' was already ready':' marked READY after barcode scan'));
+  return data;
+ }finally{readyBusy=false}
+}
+async function startReadyCamera(){
+ const video=$('readyScanVideo'),status=$('readyScanStatus');
+ if(!video)return;
+ stopReadyCamera();const session=++readyCameraSession;
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)throw Error('Camera unavailable. Type or scan the GL number in the field above.');
+  video.classList.remove('hidden');
+  $('stopReadyCamera')?.classList.remove('hidden');
+  const markResult=async value=>{
+   if(session!==readyCameraSession)return;
+   const code=normalizeSlipBarcode(value);
+   if(!/^GL[0-9]{1,16}$/.test(code)){
+    if(status)status.textContent='This barcode is not a GL tailor-slip barcode. Scan the code printed on the tailor slip.';
+    return;
+   }
+   if($('readySlipInput'))$('readySlipInput').value=code;
+   stopReadyCamera();
+   try{await markReadyByScannedCode(code)}catch(e){error(e);const s=$('readyScanStatus');if(s)s.textContent='Scan failed: '+(e.message||e)}
+  };
+  let useNative=!!window.BarcodeDetector;
+  if(useNative&&typeof BarcodeDetector.getSupportedFormats==='function'){
+   const formats=await BarcodeDetector.getSupportedFormats();
+   useNative=formats.includes('code_39');
+  }
+  if(useNative){
+   readyCameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+   if(session!==readyCameraSession){readyCameraStream?.getTracks?.().forEach(t=>t.stop());return}
+   video.srcObject=readyCameraStream;await video.play();
+   const detector=new BarcodeDetector({formats:['code_39']});
+   if(status)status.textContent='Point your camera at the barcode on the tailor slip';
+   async function detect(){
+    if(session!==readyCameraSession||!video.isConnected)return;
+    try{const found=await detector.detect(video);if(found?.length&&found[0]?.rawValue){await markResult(found[0].rawValue);if(session!==readyCameraSession)return}}
+    catch(e){if(status)status.textContent='Camera scanning: '+(e.message||e)}
+    if(session===readyCameraSession)requestAnimationFrame(detect);
+   }
+   detect();
+  }else{
+   const zxing=await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/+esm');
+   if(session!==readyCameraSession)return;
+   const reader=new zxing.BrowserMultiFormatReader();
+   const controls=await reader.decodeFromVideoDevice(undefined,video,result=>{if(result&&session===readyCameraSession)markResult(result.getText())});
+   if(session!==readyCameraSession){controls.stop();return}
+   readyCameraControls=controls;
+   if(status)status.textContent='Point your camera at the barcode on the tailor slip';
+  }
+ }catch(e){
+  stopReadyCamera();
+  if(status)status.textContent='Camera scanner unavailable: '+(e.message||e)+'. Use a handheld barcode scanner or type the GL number.';
+ }
+}
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();on('openAlerts','click',()=>{tab='alerts';render()});on('openReadyScanner','click',()=>{stopBarcodeScan();tab='scanner';render()});on('readyScannerForm','submit',async e=>{e.preventDefault();try{await markReadyByScannedCode($('readySlipInput')?.value)}catch(err){error(err);if($('readyScanStatus'))$('readyScanStatus').textContent='Scan error: '+(err.message||err)}});on('startReadyCamera','click',startReadyCamera);on('stopReadyCamera','click',stopReadyCamera);on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
 on('slipPhone','input',()=>{if($('forceNewCustomerValue'))$('forceNewCustomerValue').value='false';updatePhoneLookup()});
 on('slipPhone','blur',()=>{const matches=phoneMatches($('slipPhone')?.value);if(matches.length===1&&!editingDraftId&&$('forceNewCustomerValue')?.value!=='true')refillLastMeasurements(matches[0].id)});
 on('slipCustomerSelect','change',e=>refillLastMeasurements(e.target.value));
@@ -773,5 +871,5 @@ on('staffForm','submit',async e=>{e.preventDefault();try{const f=new FormData(e.
 document.querySelectorAll('[data-save-staff]').forEach(el=>el.onclick=async()=>{const id=el.dataset.saveStaff;try{await staffCall({action:'update',id,role:document.querySelector(`[data-role="${id}"]`).value,active:document.querySelector(`[data-active="${id}"]`).checked});notify('Staff updated');await refresh()}catch(x){error(x)}})
 }
 async function loadUser(){const {data:{user}}=await sb.auth.getUser();if(!user){me=null;role=null;$('login').classList.remove('hidden');$('app').classList.add('hidden');return}const {data:p,error:e}=await sb.from('profiles').select('*').eq('id',user.id).single();if(e||!p?.active){await sb.auth.signOut({scope:'local'});notify('Account is not authorized. Contact your admin.');return loadUser()}me=user;role=p.role;$('login').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(x){error(x)}}
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stopBarcodeScan();else if(me)refresh().catch(error)});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopBarcodeScan();stopReadyCamera()}else if(me)refresh().catch(error)});
 $('loginForm').onsubmit=async e=>{e.preventDefault();if(!sb)return notify('Configure Supabase first');const {error:x}=await sb.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(x)return error(x);await loadUser()};$('logout').onclick=async()=>{await sb.auth.signOut({scope:'local'});loadUser()};if(!ready){$('setupWarning').textContent='Setup required: configure config.js with your Supabase Project URL and public key before signing in.'}else loadUser();
