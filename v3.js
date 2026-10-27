@@ -116,7 +116,7 @@ function slipCode39Svg(raw){
  '5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
  'G':'nnnnnwwnw','L':'nnwnnnnww','*':'nwnnwnwnn'
  };
- const narrow=2,wide=5,quiet=16,barHeight=60,gap=2;
+ const narrow=2,wide=5,quiet=24,barHeight=60,gap=2;
  let x=quiet;const bars=[];
  for(const letter of '*'+code+'*'){
   const pattern=patterns[letter];if(!pattern)return '';
@@ -562,6 +562,9 @@ async function printSlip(m){
       .priority-label{display:block;color:#333;font-weight:800;font-size:11px;letter-spacing:.65px;margin-bottom:5px}
       .priority-value{display:block;font-size:20px;line-height:1.2;font-weight:850;overflow-wrap:anywhere}
       .slip-id{font-size:23px}
+      .print-barcode-block{display:flex;align-items:center;justify-content:center;gap:15px;break-inside:avoid;min-height:75px;border-bottom:1px solid #bcbcbc;padding:4px 6px}
+      .print-barcode-block .barcode-caption{font-size:11px;line-height:1.35;font-weight:800;color:#242424;max-width:160px}
+      .tailor-slip-barcode{max-width:345px;height:72px;flex:1 1 auto;min-width:0}
       .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 9px}
       .detail{display:flex;justify-content:space-between;align-items:baseline;gap:5px;
         border-bottom:1px dotted #b7b7b7;min-width:0;min-height:29px;padding:6px 2px}
@@ -609,6 +612,7 @@ async function printSlip(m){
       <div class="order-details">${details.map(([key,value])=>`
         <div class="detail"><span class="detail-label">${esc(key)}</span>
         <strong class="detail-value">${esc(displayValue(value))}</strong></div>`).join('')}</div>
+      <div class="print-barcode-block"><span class="barcode-caption">UNIQUE TAILOR SLIP BARCODE<br>SCAN WHEN OUTFIT IS READY</span>${slipCode39Svg(m.slip_no)}</div>
       <div class="measurement-sections">${groups}</div>
       <div class="remarks-area">
         <div class="remark-panel"><h3>REMARKS</h3><div class="remark-box">${esc(displayValue(m.remarks))}</div></div>
