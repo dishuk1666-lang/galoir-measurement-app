@@ -388,13 +388,20 @@ async function printSlip(m){
       ['Reviewed By',m.reviewed_by],['Size Basis',m.ready_body],
       ['Preparation Days',m.days_required],['CRM Ready',order?.is_ready?'Yes':'No'],['Deliver',deliver]
     ];
+    // Two clean print columns. Read down the left column, then down the right.
+    // Only the print layout is reordered: stored measurement keys never change.
     const groups=Object.entries(measureGroups).map(([title,items])=>{
       const rows=Math.ceil(items.length/2);
+      const printOrder=[];
+      for(let i=0;i<rows;i++){
+        printOrder.push(items[i]);
+        if(items[i+rows])printOrder.push(items[i+rows]);
+      }
       return `<section class="measure-section" style="--rows:${rows}">
         <h3>${esc(title)} — INCHES</h3>
-        <div class="measure-grid">${items.map((name,i)=>`
+        <div class="measure-grid">${printOrder.map(name=>`
           <div class="measure-cell">
-            <span class="measure-name">${title==='Top / Ready / Body'?'<b class="measure-no">'+(i+1)+'.</b> ':''}${esc(name)}</span>
+            <span class="measure-name">${esc(name)}</span>
             <strong class="measure-value">${esc(displayValue(m.values?.[title+' / '+name]))}</strong>
           </div>`).join('')}
         </div>
@@ -423,7 +430,6 @@ async function printSlip(m){
       .priority-label{display:block;color:#333;font-weight:800;font-size:11px;letter-spacing:.65px;margin-bottom:5px}
       .priority-value{display:block;font-size:20px;line-height:1.2;font-weight:850;overflow-wrap:anywhere}
       .slip-id{font-size:23px}
-      .measure-no{font-size:16px;font-weight:850;margin-right:4px}
       .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 9px}
       .detail{display:flex;justify-content:space-between;align-items:baseline;gap:5px;
         border-bottom:1px dotted #b7b7b7;min-width:0;min-height:29px;padding:6px 2px}
