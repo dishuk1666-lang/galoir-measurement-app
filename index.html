@@ -177,4 +177,38 @@
 .status-description{margin:4px 0 0;font-size:12px;line-height:1.5;color:#5e554b;border-top:1px dashed #e2dcd4;padding-top:10px}
 @media(max-width:950px){.status-result-grid{grid-template-columns:1fr}}
 @media(max-width:480px){.status-search-form{flex-direction:column}.status-search-form .btn{width:100%}.status-result-top>strong{font-size:18px}.status-result-card{padding:12px}}
+
+/* Dashboard search results: actions and private measurement preview */
+.status-result-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e6dfd6}
+.status-result-actions .btn{font-size:12px;padding:9px 12px;white-space:normal;text-align:center}
+.status-slip-dialog{width:min(900px,calc(100vw - 28px));max-width:900px;max-height:calc(100dvh - 28px);overflow-y:auto;border:1px solid #c8baac;border-radius:14px;padding:18px 20px;background:#fff;color:#25211e;box-shadow:0 15px 55px rgba(0,0,0,.27);position:fixed}
+.status-slip-dialog::backdrop{background:rgba(19,16,14,.67)}
+.status-slip-dialog.status-slip-fallback{z-index:1000}
+.status-slip-dialog-controls{display:flex;justify-content:space-between;align-items:center;gap:15px;padding-bottom:12px;margin-bottom:13px;border-bottom:1px solid #e1dbd1}
+.status-slip-dialog-controls>span{font-size:12px;font-weight:800;letter-spacing:.8px;color:#615951}
+.status-preview-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.status-preview-brand{font-size:25px;font-weight:850;letter-spacing:1.3px}
+.status-preview-header h3{font-size:20px;margin:4px 0 0}
+.status-preview-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;background:#f7f5f1;border-radius:8px;padding:12px;margin-bottom:14px}
+.status-preview-meta>div{min-width:0;padding-bottom:6px;border-bottom:1px dotted #c8c0b7}
+.status-preview-meta span{display:block;font-size:11px;color:#6e6257;margin-bottom:4px}
+.status-preview-meta strong{display:block;font-size:13px;overflow-wrap:anywhere}
+.status-preview-measurements{margin:14px 0}
+.status-preview-measurements h4{background:#eeeae5;padding:9px 12px;font-size:14px;margin:0}
+.status-preview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
+.status-preview-cell{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px dotted #cfc8bf;min-width:0;padding:8px 7px}
+.status-preview-cell span{font-size:13px;overflow-wrap:anywhere}
+.status-preview-cell strong{font-size:15px;text-align:right;overflow-wrap:anywhere}
+.status-preview-notes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.status-preview-notes>div{border:1px solid #ccc4b9;border-radius:8px;padding:12px;min-width:0}
+.status-preview-notes h4{font-size:14px;margin:0 0 8px}
+.status-preview-notes p{font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin:0}
+@media(max-width:650px){
+ .status-result-actions{flex-direction:column;align-items:stretch}
+ .status-result-actions .btn{width:100%}
+ .status-slip-dialog{padding:12px;width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+ .status-preview-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .status-preview-notes{grid-template-columns:1fr}
+ .status-preview-header{align-items:flex-start;flex-direction:column}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
