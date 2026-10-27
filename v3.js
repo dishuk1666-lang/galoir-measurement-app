@@ -3,6 +3,13 @@ import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 const cfg=window.GALOIR_CONFIG||{};const ready=cfg.supabaseUrl?.startsWith('https://')&&cfg.supabaseAnonKey&&!cfg.supabaseAnonKey.startsWith('REPLACE_');
 const sb=ready?createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Display-only redaction: full numbers stay available for exact customer lookup and WATI.
+function maskCustomerPhone(value){
+ const digits=String(value??'').replace(/\D/g,'');
+ if(!digits)return '—';
+ return digits.length<=4?'••••':'••••••'+digits.slice(-4);
+}
+function phoneForDisplay(value){return role==='sales'?maskCustomerPhone(value):String(value||'—')}
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
 let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
 const allowed={admin:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','scanner','alerts','customers','measurements','daily','tailoring']};
@@ -79,7 +86,7 @@ function worklistRow(o,kind){
  return `<article class="worklist-row ${checked?'worklist-checked':''}">
  <div class="worklist-entry">
   <strong>${esc(c?.full_name||customerName(o.customer_id))}</strong>
-  <span>${esc(c?.phone||'')} · <b>${esc(m?.slip_no||'No GL slip')}</b></span>
+  <span>${esc(phoneForDisplay(c?.phone))} · <b>${esc(m?.slip_no||'No GL slip')}</b></span>
   <span>${esc(o.item_name)} · ${o.order_type==='new_make'?'New Make':'Self Alter'}</span>
   ${extra}
   <span class="worklist-status">${esc(badge)}</span>
@@ -145,7 +152,7 @@ function statusLookupResults(query){
      <span class="status-pill ${state.cls}">${esc(state.label)}</span></div>
    <div class="status-result-details">
     <div><span>Customer</span><strong>${esc(c?.full_name||'Customer')}</strong></div>
-    <div><span>Phone</span><strong>${esc(c?.phone||'—')}</strong></div>
+    <div><span>Phone</span><strong>${esc(phoneForDisplay(c?.phone))}</strong></div>
     <div><span>Bill Number</span><strong>${esc(m?.bill_no||'Pending Billing')}</strong></div>
     <div><span>Outfit</span><strong>${esc(o?.item_name||m?.item_name||'—')}</strong></div>
     <div><span>Order Type</span><strong>${makeType==='new_make'?'New Make':'Self Alter'}</strong></div>
@@ -169,7 +176,7 @@ function statusSlipPreviewHtml(m){
  const measureValue=v=>v==null||String(v).trim()==='0'?'':String(v).trim();
  const meta=[
   ['GL Slip Number',m.slip_no||'—'],['Stage',billed?'Billed':'Draft'],
-  ['Customer',c?.full_name||'—'],['Phone',c?.phone||'—'],
+  ['Customer',c?.full_name||'—'],['Phone',phoneForDisplay(c?.phone)],
   ['Outfit',m.item_name||order?.item_name||'—'],['Order Type',m.order_type==='new_make'?'New Make':'Self Alter'],
   ['Salesperson',m.salesperson_name||'—'],['Delivery Date',m.delivery_date?outputDate(m.delivery_date):'Not booked'],
   ['Bill Number',m.bill_no||'Pending'],['Design Number',m.design_number||'—'],
@@ -290,9 +297,9 @@ function slipCode39Svg(raw){
 }
 function ordersTable(rows){return `<table><thead><tr><th>Customer / Slip</th><th>Outfit / Type</th><th>Delivery</th><th>Status</th><th>CRM Ready</th><th>Supplier Follow-up</th></tr></thead><tbody>${rows.length?rows.map(o=>{const slip=measurements.find(m=>m.id===o.measurement_id)?.slip_no||'—';return `<tr><td>${esc(customerName(o.customer_id))}<br><strong>${esc(slip)}</strong></td><td>${esc(o.item_name)}<br><span class="muted">${o.order_type==='new_make'?'New Make':'Self Alter'}</span></td><td>${esc(outputDate(o.delivery_date))}</td><td><span class="pill">${esc(o.status)}</span></td><td><label><input type="checkbox" data-ready-id="${esc(o.id)}" ${o.is_ready?'checked':''} style="width:auto"> Ready</label></td><td>${o.order_type==='new_make'?`<button type="button" class="btn alt" data-supplier-id="${esc(o.id)}">${o.supplier_notified_at?'✓ Supplier informed':'Mark supplier informed'}</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="6">No records</td></tr>'}</tbody></table>`}
 function alertsView(){return `<div class="panel"><h3>New Make · Contact supplier 2 days before delivery</h3><p class="muted">These reminders appear from 2 days before delivery until marked Supplier Informed or Ready.</p>${ordersTable(supplierAlerts())}</div><div class="panel"><h3>Self Alter · Put on alteration / prepare</h3><p class="muted">Reminders begin the selected number of preparation days before delivery.</p>${ordersTable(alterationAlerts())}</div>`}
-function customerOptions(){return customers.map(c=>`<option value="${c.id}">${esc(c.full_name)} — ${esc(c.phone)}</option>`).join('')}
+function customerOptions(){return customers.map(c=>`<option value="${c.id}">${esc(c.full_name)} — ${esc(phoneForDisplay(c.phone))}</option>`).join('')}
 function customersView(){return `${can("customers") ? `<div class="panel"><h3>Add customer</h3><form id="customerForm"><div class="fields"><div><label>Full name</label><input name="full_name" required maxlength="120"></div><div><label>Phone</label><input name="phone" required maxlength="30"></div><div class="span"><label>Notes</label><textarea name="notes" rows="2"></textarea></div></div><button class="btn">Save Customer</button></form></div>` : ""}<div class="panel"><h3>Customer profiles</h3><input id="searchCustomers"><div id="customerRows">${customerTable(customers)}</div></div>`}
-function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(c.phone)}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
+function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(phoneForDisplay(c.phone))}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
 const measureGroups={"Top / Ready / Body":["Length","Upper Chest","Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair"],"Salwar / Pant / Plazo":["Length","Poncha","Waist","Hip","Thigh","Calf","Ankle"]};
 function measurementGroupDisplayName(group){return group==='Lehenga / Sharara'?'Lehenga / Sharara / Saree':group}
 function measurementInputs(group,items){const current=measurements.find(m=>m.id===editingDraftId);return `<div class="panel span"><h3>${esc(measurementGroupDisplayName(group))} — numbers or tailor instructions</h3><div class="fields">${items.map(x=>`<div><label>${esc(x)}</label><input type="text" maxlength="120" name="m_${esc(group+' / '+x)}" value="${initialField(current,group,x)}"></div>`).join('')}</div></div>`}
@@ -418,7 +425,7 @@ function measurementsView(){
  </div>
  <p class="muted">Find by phone to reuse customer details and last measurements, or add a new customer. Save at any point. <strong>Drafts do not reserve a delivery slot</strong> until the cashier enters a bill number and confirms booking.</p>
  <form id="measurementForm"><div class="fields">
-  <div><label>Customer phone number *</label><input id="slipPhone" type="tel" name="customer_phone" value="${esc(c?.phone||'')}" autocomplete="tel" required maxlength="30"></div>
+  <div><label>Customer phone number *</label><input id="slipPhone" type="${role==='sales'&&c?.phone?'password':'tel'}" inputmode="tel" name="customer_phone" value="${esc(c?.phone||'')}" autocomplete="${role==='sales'&&c?.phone?'off':'tel'}" required maxlength="30">${role==='sales'&&c?.phone?`<p class="muted">Saved number: ${esc(maskCustomerPhone(c.phone))}. Enter a full number only if correcting it.</p>`:''}</div>
   <div><label>Customer found</label><div id="phoneLookupStatus" class="muted">Type phone number to search</div><button id="forceNewCustomer" type="button" class="btn alt">Add new customer</button><input type="hidden" name="force_new_customer" id="forceNewCustomerValue" value="false"></div>
   <div class="span hidden" id="existingCustomerBox"><label>Select customer</label><select name="customer_id" id="slipCustomerSelect"></select></div>
   <div class="span" id="newCustomerBox"><label>New customer name</label><input id="slipNewCustomerName" name="customer_name" maxlength="120" value="${esc(c?.full_name||'')}"></div>
@@ -461,7 +468,7 @@ function measurementTable(rows){
   const c=customers.find(x=>x.id===m.customer_id);
   const isBilled=m.workflow_status==='billed'&&Boolean(m.bill_no);
   const deletable=role==='admin'&&m.workflow_status==='draft'&&!String(m.bill_no||'').trim()&&!orders.some(o=>o.measurement_id===m.id);
-  return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(c?.phone||'')}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
+  return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(phoneForDisplay(c?.phone))}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
   ${deletable?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Draft</button>`:''}
   ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}${m.video_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="video">Video</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
  }).join('')}</table>`;
@@ -481,7 +488,7 @@ function cashierView(){
   return `<div class="panel"><h3>Slip ${esc(m.slip_no)} — Ready for Billing</h3>
   <div class="fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:18px;padding:14px;background:#f4f2ee;border-radius:10px">
    <div><label>Customer Name</label><strong>${esc(c?.full_name||'Unknown customer')}</strong></div>
-   <div><label>Phone Number</label><strong>${esc(c?.phone||'—')}</strong></div>
+   <div><label>Phone Number</label><strong>${esc(phoneForDisplay(c?.phone))}</strong></div>
    <div><label>Order Type</label><strong>${m.order_type==='new_make'?'New Make':'Self Alter'}</strong></div>
    <div><label>Design Number</label><strong>${esc(m.design_number||'Not entered')}</strong></div>
   </div>
@@ -504,7 +511,7 @@ function cashierView(){
   <button type="submit" class="btn">Confirm Billing & Enable Print</button><button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Complete measurements first</button>
   ${role==='admin'&&!String(m.bill_no||'').trim()&&!orders.some(o=>o.measurement_id===m.id)?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Unbilled Draft</button>`:''}
   </form></div>`;
- }).join(''):'<p>No drafts waiting for billing.</p>'}</div><div class="panel"><h3>Billed Slips · Ready to print</h3>${billed.length?`<table><tr><th>Slip</th><th>Customer / Phone</th><th>Order Type</th><th>Bill No.</th><th>Design No.</th><th>Barcode</th><th>Total (₹)</th><th>Paid (₹)</th><th>Balance (₹)</th><th>Print</th></tr>${billed.map(m=>{const c=customers.find(x=>x.id===m.customer_id);return `<tr><td>${esc(m.slip_no)}</td><td>${esc(c?.full_name||'—')}<br><span class="muted">${esc(c?.phone||'—')}</span></td><td>${m.order_type==='new_make'?'New Make':'Self Alter'}</td><td>${esc(m.bill_no)}</td><td>${esc(m.design_number||'—')}</td><td>${esc(m.product_barcode||'—')}</td><td>${m.final_billing_amount==null?'—':esc(formatInr(m.final_billing_amount))}</td><td>${m.paid_amount==null?'—':esc(formatInr(m.paid_amount))}</td><td>${m.paid_amount==null||m.final_billing_amount==null?'—':esc(formatInr(Number(m.final_billing_amount)-Number(m.paid_amount)))}</td><td><button class="btn" type="button" data-print="${esc(m.id)}">Print Tailor Slip</button></td></tr>`}).join('')}</table>`:'<p class="muted">No billed slips yet.</p>'}</div>`;
+ }).join(''):'<p>No drafts waiting for billing.</p>'}</div><div class="panel"><h3>Billed Slips · Ready to print</h3>${billed.length?`<table><tr><th>Slip</th><th>Customer / Phone</th><th>Order Type</th><th>Bill No.</th><th>Design No.</th><th>Barcode</th><th>Total (₹)</th><th>Paid (₹)</th><th>Balance (₹)</th><th>Print</th></tr>${billed.map(m=>{const c=customers.find(x=>x.id===m.customer_id);return `<tr><td>${esc(m.slip_no)}</td><td>${esc(c?.full_name||'—')}<br><span class="muted">${esc(phoneForDisplay(c?.phone))}</span></td><td>${m.order_type==='new_make'?'New Make':'Self Alter'}</td><td>${esc(m.bill_no)}</td><td>${esc(m.design_number||'—')}</td><td>${esc(m.product_barcode||'—')}</td><td>${m.final_billing_amount==null?'—':esc(formatInr(m.final_billing_amount))}</td><td>${m.paid_amount==null?'—':esc(formatInr(m.paid_amount))}</td><td>${m.paid_amount==null||m.final_billing_amount==null?'—':esc(formatInr(Number(m.final_billing_amount)-Number(m.paid_amount)))}</td><td><button class="btn" type="button" data-print="${esc(m.id)}">Print Tailor Slip</button></td></tr>`}).join('')}</table>`:'<p class="muted">No billed slips yet.</p>'}</div>`;
 }
 function calendarView(){const year=month.getFullYear(),mo=month.getMonth(),first=new Date(year,mo,1).getDay(),days=new Date(year,mo+1,0).getDate();let cells=Array(first).fill('<div></div>');for(let n=1;n<=days;n++){const d=dateStr(new Date(year,mo,n)),cnt=countDate(d),weekday=new Date(year,mo,n).getDay(),weekend=weekday===0||weekday===6,past=d<today,dayClass=weekend?'weekend':past?'past':cnt>=capacity?'full':'available';cells.push(`<button class="day ${dayClass} ${selectedDate===d?'selected':''}" data-date="${d}" aria-label="${d}, ${weekend?'weekend, ':''}${Math.max(0,capacity-cnt)} Self Alter slots free"><strong>${n}</strong><small>${Math.max(0,capacity-cnt)} / ${capacity} Alter slots</small><small>${newCount(d)} New Make</small></button>`)}return `<div class="panel"><div class="top"><h3>${month.toLocaleString('en-IN',{month:'long',year:'numeric'})}</h3><div class="actions"><button class="btn alt" id="prevMonth">Previous</button><button class="btn alt" id="nextMonth">Next</button></div></div><p class="muted">Green: available Self Alter slots · Red: Saturday / Sunday · Amber: full Self Alter date · Grey: past weekday. Weekends can still be booked according to normal rules; New Make remains unlimited.</p><div class="calendar">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((x,i)=>`<div class="right ${i===0||i===6?'weekend-heading':'muted'}">${x}</div>`).join('')}${cells.join('')}</div></div><div class="panel"><h3>Book delivery — ${esc(selectedDate)}</h3><p class="muted">${countDate(selectedDate)} of ${capacity} Self Alter slots used · ${newCount(selectedDate)} New Make bookings (unlimited).</p>${can('bookings')?`<form id="bookingForm"><div class="fields">
 <div><label>Customer</label><select name="customer_id" id="bookingCustomer" required>${customerOptions()}</select></div>
@@ -712,7 +719,7 @@ async function printSlip(m){
     };
     const deliver=[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean).join(', ');
     const details=[
-      ['Customer',customer?.full_name],['Phone',customer?.phone],['Bill No.',m.bill_no],
+      ['Customer',customer?.full_name],['Phone',maskCustomerPhone(customer?.phone)],['Bill No.',m.bill_no],
       ['Product Barcode',m.product_barcode],['Design Number',m.design_number],
       ['Order Date',outputDate(m.order_date)],['Order Type',m.order_type==='new_make'?'New Make':'Self Alter'],
       ['Outfit',m.item_name],['Company',m.company_name],
@@ -893,7 +900,7 @@ function updatePhoneLookup(){
  const matches=phoneMatches(phone.value);
  const forceNew=mode.value==='true';
  const before=select.value;
- select.innerHTML=matches.map(c=>`<option value="${esc(c.id)}">${esc(c.full_name)} · ${esc(c.phone)}</option>`).join('');
+ select.innerHTML=matches.map(c=>`<option value="${esc(c.id)}">${esc(c.full_name)} · ${esc(phoneForDisplay(c.phone))}</option>`).join('');
  const editing=measurements.find(m=>m.id===editingDraftId);
  if(matches.some(c=>c.id===before))select.value=before;
  else if(editing&&matches.some(c=>c.id===editing.customer_id))select.value=editing.customer_id;
