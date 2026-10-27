@@ -4,14 +4,44 @@ const cfg=window.GALOIR_CONFIG||{};const ready=cfg.supabaseUrl?.startsWith('http
 const sb=ready?createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',month=new Date(),selectedDate=today;
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
 const allowed={admin:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','scanner','alerts','customers','measurements','cashier','calendar','daily'],tailoring:['dashboard','scanner','alerts','customers','measurements','daily','tailoring']};
 const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
 function notify(s){$('notice').textContent=s;$('notice').classList.remove('hidden');setTimeout(()=>$('notice').classList.add('hidden'),4500)}
 function error(e){notify('Error: '+(e?.message||e));console.error(e)}
 async function query(table,fields='*'){const pageSize=500;let offset=0;const rows=[];while(true){const {data,error:e}=await sb.from(table).select(fields).range(offset,offset+pageSize-1);if(e)throw e;rows.push(...(data||[]));if(!data||data.length<pageSize)break;offset+=pageSize}return rows}
-async function refresh(){today=dateStr(new Date());const [a,b,c,d,e]=await Promise.all([query('customers'),query('measurements'),query('orders'),query('settings'),query('salespeople')]);customers=a;measurements=b;orders=c;salespeople=e;capacity=d[0]?.daily_capacity||20;if(role==='admin')profiles=await query('profiles');render()}
+
+const formatInr=v=>'₹'+Number(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function whatsappConnectionStatus(){
+ const {data,error:e}=await sb.functions.invoke('galoir-whatsapp-dispatch',{body:{action:'status'}});
+ if(e)throw e;
+ waConfiguration=data||null;
+ return waConfiguration;
+}
+async function dispatchPendingWhatsapp(force=false){
+ if(!waEnabled||!sb||waDispatchBusy||(!force&&Date.now()-waDispatchLast<12000))return null;
+ waDispatchBusy=true;waDispatchLast=Date.now();
+ try{
+  const {data,error:e}=await sb.functions.invoke('galoir-whatsapp-dispatch',{body:{action:'dispatch'}});
+  if(e)throw e;
+  return data;
+ }catch(e){
+  console.warn('WhatsApp notification dispatch pending:',e?.message||e);
+  return null;
+ }finally{waDispatchBusy=false}
+}
+function updateCashierBalance(form){
+ const total=Number(form.querySelector('[name="final_billing_amount"]')?.value);
+ const paidInput=form.querySelector('[name="paid_amount"]'),balance=form.querySelector('.cashierBalance');
+ if(!paidInput||!balance)return;
+ const entered=String(paidInput.value||'').trim(),paid=Number(entered);
+ const invalid=entered!==''&&(!Number.isFinite(paid)||paid<0||!Number.isFinite(total)||paid>total);
+ balance.textContent=entered===''?'Enter amount paid':invalid?'Paid amount cannot exceed the total':formatInr(total-paid);
+ balance.classList.toggle('payment-invalid',invalid);
+}
+
+async function refresh(){today=dateStr(new Date());const [a,b,c,d,e]=await Promise.all([query('customers'),query('measurements'),query('orders'),query('settings'),query('salespeople')]);customers=a;measurements=b;orders=c;salespeople=e;capacity=d[0]?.daily_capacity||20;waEnabled=d[0]?.whatsapp_enabled===true;if(role==='admin')profiles=await query('profiles');if(tab==='settings'){const {data,error:queueError}=await sb.from('galoir_whatsapp_outbox').select('id,measurement_id,event_type,status,created_at,submitted_at,attempts,last_error').order('created_at',{ascending:false}).limit(60);waNotifications=queueError?[]:data||[]}render();if(waEnabled)void dispatchPendingWhatsapp()}
 function customerName(id){return customers.find(x=>x.id===id)?.full_name||'Customer'}
 function countDate(d){return orders.filter(x=>x.delivery_date===d&&x.order_type!=='new_make').length}
 function newCount(d){return orders.filter(x=>x.delivery_date===d&&x.order_type==='new_make').length}
@@ -457,7 +487,10 @@ function cashierView(){
   <p class="muted">Enter the bill number and final amount, then confirm. The Print Tailor Slip button appears immediately afterward.</p>
   <div class="fields">
   <div><label>Bill number *</label><input name="bill_no" maxlength="100" required></div>
-  <div><label>Final Billing Amount (₹) *</label><input name="final_billing_amount" type="number" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${esc(m.final_billing_amount??'')}" required></div>
+  <div><label>Total Billing Amount (₹) *</label><input name="final_billing_amount" type="number" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${esc(m.final_billing_amount??'')}" required></div>
+  <div><label>Amount Paid (₹) *</label><input name="paid_amount" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(m.paid_amount??'')}" required><p class="muted">Enter 0 if nothing has been paid yet.</p></div>
+  <div><label>Balance Due (₹)</label><div class="cashierBalance payment-balance">Enter amount paid</div><p class="muted">Automatically calculated: Total − Paid.</p></div>
+  <div class="span whatsapp-optin"><label><input type="checkbox" name="whatsapp_opt_in" value="yes" style="width:auto" ${m.whatsapp_opt_in?'checked':''}> Customer has agreed to receive order updates on WhatsApp</label><p class="muted">Optional, unchecked by default. Without consent, no WhatsApp messages are queued. Notifications also require Admin to enable the WhatsApp integration.</p></div>
   <input type="hidden" name="item_name" value="${esc(m.item_name||(m.order_type==='new_make'?'New Make Outfit':'Self Alter Outfit'))}">
   <div><label>Delivery date *</label>${coloredDateInput('cashierDate-'+m.id,m.delivery_date||'')}</div>
   <div><label>Product Barcode (optional${m.order_type==='new_make'?' for New Make':''})</label><input name="product_barcode" maxlength="120" value="${esc(m.product_barcode||'')}"></div>
@@ -530,6 +563,9 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
  const dateInput=form.querySelector('.cashierDate'),warning=form.querySelector('.cashierOverride');
  const toggle=()=>{const date=dateInput?.value,full=m.order_type==='self_alter'&&date&&countDate(date)>=capacity;warning?.classList.toggle('hidden',!full)};
  dateInput?.addEventListener('change',toggle);toggle();
+ form.querySelector('[name="paid_amount"]')?.addEventListener('input',()=>updateCashierBalance(form));
+ form.querySelector('[name="final_billing_amount"]')?.addEventListener('input',()=>updateCashierBalance(form));
+ updateCashierBalance(form);
  form.addEventListener('submit',async e=>{
   e.preventDefault();const f=new FormData(form),submit=form.querySelector('button[type="submit"]');
   if(submit)submit.disabled=true;
@@ -543,8 +579,12 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
    const finalAmount=Number(amountText);
    if(!/^\d+(?:\.\d{1,2})?$/.test(amountText)||!Number.isFinite(finalAmount)||finalAmount<=0||finalAmount>9999999999.99)
      throw Error('Enter a valid final billing amount in rupees (greater than ₹0, maximum two decimals)');
+   const paidText=String(f.get('paid_amount')||'').trim();
+   const paidAmount=Number(paidText);
+   if(!/^\d+(?:\.\d{1,2})?$/.test(paidText)||!Number.isFinite(paidAmount)||paidAmount<0||paidAmount>finalAmount)
+     throw Error('Paid amount must be between ₹0 and the total billing amount (up to two decimals)');
    const approval=await getOverrideForBooking(f,m.order_type,day);
-   const {data,error:billError}=await sb.rpc('finalize_slip_billing_v3',{
+   const {data,error:billError}=await sb.rpc('finalize_slip_billing_v4',{
     p_measurement_id:id,
     p_bill_no:bill,
     p_item_name:item,
@@ -552,6 +592,8 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
     p_product_barcode:f.get('product_barcode')||null,
     p_design_number:f.get('design_number')||null,
     p_final_billing_amount:finalAmount,
+    p_paid_amount:paidAmount,
+    p_whatsapp_opt_in:f.has('whatsapp_opt_in'),
     p_override_token:approval
    });
    if(billError)throw billError;
@@ -559,7 +601,7 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
    editingDraftId=null;
    await refresh();
    $('billingSuccess')?.scrollIntoView({behavior:'smooth',block:'start'});
-   notify(data.slip_no+' billed successfully — Print Tailor Slip is ready at the top.');
+   notify(data.slip_no+' billed — '+formatInr(finalAmount)+' total, '+formatInr(paidAmount)+' paid, '+formatInr(finalAmount-paidAmount)+' balance. Print is ready.'+(f.has('whatsapp_opt_in')&&!waEnabled?' WhatsApp disabled until Admin setup.':''));
   }catch(err){error(err)}finally{if(submit&&submit.isConnected)submit.disabled=false}
  });
 });
