@@ -83,26 +83,25 @@ function computeOutfitStatus(order){
 }
 function statusLookupResults(query){
  const raw=String(query||'').trim();
- if(!raw)return '<p class="muted">Enter a customer phone number or GL slip number to check its status.</p>';
+ if(!raw)return '<p class="muted">Enter a customer phone number, GL slip number, or bill number to check its status.</p>';
  const slip=raw.toUpperCase().replace(/[\s-]/g,'');
  const isSlip=/^GL\d{1,16}$/.test(slip);
  const isPhone=/^[+()\d\s-]+$/.test(raw)&&/^\d{7,15}$/.test(raw.replace(/\D/g,''));
- if(!isSlip&&!isPhone)return '<p class="status-lookup-message">Enter a complete phone number or a GL slip number such as GL2001.</p>';
- let foundMeasurements=[],foundOrders=[];
- if(isSlip){
-  foundMeasurements=measurements.filter(m=>String(m.slip_no||'').toUpperCase()===slip);
-  const slipIds=new Set(foundMeasurements.map(m=>m.id));
-  foundOrders=orders.filter(o=>slipIds.has(o.measurement_id));
- }else{
-  const custIds=new Set(customers.filter(c=>phoneStatusMatch(c.phone,raw)).map(c=>c.id));
-  foundMeasurements=measurements.filter(m=>custIds.has(m.customer_id));
-  foundOrders=orders.filter(o=>custIds.has(o.customer_id));
- }
+ // Exact bill-number match (case-insensitive), including short numeric and alphanumeric bills.
+ // Check phone, GL slip and bill together so a numeric bill matching a phone is not missed.
+ const billLookup=raw.toLowerCase();
+ const custIds=new Set(isPhone?customers.filter(c=>phoneStatusMatch(c.phone,raw)).map(c=>c.id):[]);
+ const foundMeasurements=measurements.filter(m=>
+  (isSlip&&String(m.slip_no||'').toUpperCase()===slip)||
+  (String(m.bill_no||'').trim()!==''&&String(m.bill_no).trim().toLowerCase()===billLookup)||
+  custIds.has(m.customer_id));
+ const slipIds=new Set(foundMeasurements.map(m=>m.id));
+ const foundOrders=orders.filter(o=>slipIds.has(o.measurement_id)||custIds.has(o.customer_id));
  const bySlip=new Map(foundOrders.filter(o=>o.measurement_id).map(o=>[o.measurement_id,o]));
  const results=foundMeasurements.map(m=>({m,o:bySlip.get(m.id)||null}));
  const linkedOrderIds=new Set(results.map(r=>r.o?.id).filter(Boolean));
  for(const o of foundOrders)if(!linkedOrderIds.has(o.id))results.push({m:null,o});
- if(!results.length)return '<p class="status-lookup-message">No matching measurement slip or booking found.</p>';
+ if(!results.length)return '<p class="status-lookup-message">No matching bill number, measurement slip, or customer phone number found. Enter the full phone number or exact bill number.</p>';
  results.sort((a,b)=>String(b.o?.delivery_date||b.m?.created_at||'').localeCompare(String(a.o?.delivery_date||a.m?.created_at||'')));
  const count=results.length;
  const cards=results.slice(0,60).map(({m,o})=>{
@@ -117,6 +116,7 @@ function statusLookupResults(query){
    <div class="status-result-details">
     <div><span>Customer</span><strong>${esc(c?.full_name||'Customer')}</strong></div>
     <div><span>Phone</span><strong>${esc(c?.phone||'—')}</strong></div>
+    <div><span>Bill Number</span><strong>${esc(m?.bill_no||'Pending Billing')}</strong></div>
     <div><span>Outfit</span><strong>${esc(o?.item_name||m?.item_name||'—')}</strong></div>
     <div><span>Order Type</span><strong>${makeType==='new_make'?'New Make':'Self Alter'}</strong></div>
     <div><span>Expected Delivery</span><strong>${esc(expectation)}</strong></div>
@@ -176,10 +176,10 @@ function dashboardView(){
  const sent=master.filter(o=>o.master_room_sent_at).length;
  const overdueDelivery=orders.filter(o=>o.delivery_date<today&&o.status!=='delivered').length;
  return `<section class="panel status-lookup-panel">
-  <h3>Search Customer / Slip Status</h3>
-  <p class="muted">Enter a customer phone number or GL slip number to check whether the outfit is ready, sent to the master room, or not yet due.</p>
+  <h3>Search Customer / Slip / Bill Status</h3>
+  <p class="muted">Enter a customer phone number, GL slip number, or exact bill number to check whether the outfit is ready, sent to the master room, or not yet due.</p>
   <form id="statusSearchForm" role="search" class="status-search-form" autocomplete="off">
-   <input type="search" id="statusSearchInput" maxlength="35" value="${esc(statusSearchQuery)}" placeholder="Customer phone or GL2001" aria-label="Search by customer phone or GL slip number">
+   <input type="search" id="statusSearchInput" maxlength="100" value="${esc(statusSearchQuery)}" placeholder="Phone, GL2001 or Bill No." aria-label="Search by customer phone, GL slip number or bill number">
    <button class="btn" type="submit">Search Status</button>
    <button class="btn alt" type="button" id="statusSearchClear">Clear</button>
   </form>
