@@ -36,6 +36,49 @@ function phoneMatches(v){const q=phoneDigits(v);return q.length>=7?customers.fil
 function lastMeasurement(customerId){return measurements.filter(m=>m.customer_id===customerId).sort((a,b)=>b.created_at.localeCompare(a.created_at))[0]||null}
 function initialField(draft,group,name){return esc(draft?.values?.[group+' / '+name]??'')}
 function customerNamePhone(draft){return customers.find(c=>c.id===draft?.customer_id)||null}
+function preparationLeadTimeMessage(date,days){
+ const lead=Number(days);
+ if(!Number.isInteger(lead)||lead<0||lead>60)return 'Preparation days must be a whole number between 0 and 60.';
+ if(!date)return '';
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return 'Select a valid delivery date.';
+ const remaining=daysUntil(date);
+ if(!Number.isFinite(remaining))return 'Select a valid delivery date.';
+ if(remaining<0)return 'Delivery date cannot be in the past.';
+ if(remaining>=lead)return '';
+ const earliest=new Date(Date.parse(today+'T00:00:00Z')+lead*86400000).toISOString().slice(0,10);
+ return `Preparation requires ${lead} day${lead===1?'':'s'}, but delivery is only ${remaining} day${remaining===1?'':'s'} away. Select ${outputDate(earliest)} or later, or reduce preparation days.`;
+}
+function bindPreparationWarnings(){
+ const monitor=(form,dateInput,daysInput,warn,submit,baseDisabled=()=>false)=>{
+  if(!form||!dateInput||!warn)return;
+  const check=()=>{
+   const days=daysInput?.value!==undefined&&daysInput.value!==''?daysInput.value:form.dataset.preparationDays??3;
+   const message=preparationLeadTimeMessage(dateInput.value,days);
+   warn.textContent=message;
+   warn.classList.toggle('hidden',!message);
+   const picker=dateInput.closest?.('.colored-date-picker');
+   const trigger=picker?.querySelector('[data-color-toggle]');
+   trigger?.classList.toggle('prep-invalid',!!message);
+   if(submit)submit.disabled=!!message||!!baseDisabled();
+  };
+  dateInput.addEventListener('change',check);
+  daysInput?.addEventListener('input',check);
+  daysInput?.addEventListener('change',check);
+  check();
+ };
+ const slip=$('measurementForm');
+ if(slip)monitor(slip,$('slipDate'),slip.elements.namedItem('days_required'),$('slipLeadWarning'),$('saveSlipBtn'));
+ const booking=$('bookingForm');
+ if(booking)monitor(booking,$('bookingDate'),booking.elements.namedItem('days_required'),$('bookingLeadWarning'),
+    booking.querySelector('button[type="submit"]'),()=>!customers.length||$('bookingDate')?.value<today);
+ document.querySelectorAll('.cashierForm').forEach(form=>{
+  const m=measurements.find(x=>x.id===form.dataset.slipId);
+  if(!m)return;
+  form.dataset.preparationDays=String(m.days_required??3);
+  monitor(form,form.querySelector('.cashierDate'),null,form.querySelector('.cashierLeadWarning'),
+    form.querySelector('button[type="submit"]'));
+ });
+}
 function coloredDateInput(id,value,allowPast=false){
  const raw=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?value:'';
  const className=id.startsWith('cashierDate-')?'cashierDate':'';
@@ -122,7 +165,8 @@ function measurementsView(){
   <div><label>Reviewed by</label><input name="reviewed_by" value="${field('reviewed_by')}" maxlength="120"></div>
   <div><label>Order date</label><input type="date" name="order_date" value="${d?.order_date||today}"></div>
   <div><label>Delivery date (optional for draft)</label>${coloredDateInput('slipDate',d?.delivery_date||'')}</div>
-  <div><label>Preparation days</label><input name="days_required" type="number" min="0" max="60" value="${d?.days_required??3}"></div>
+  <div><label>Preparation days</label><input name="days_required" id="slipPrepDays" type="number" min="0" max="60" step="1" value="${d?.days_required??3}"></div>
+  <div class="span preparation-lead-warning hidden" id="slipLeadWarning" role="alert" aria-live="assertive"></div>
   <div><label>Measurements based on</label><select name="ready_body"><option value="body" ${!d||selected('ready_body','body')?'selected':''}>Body</option><option value="ready" ${selected('ready_body','ready')}>Ready</option></select></div>
   <div class="span"><label>Items to deliver</label><div class="actions"><label><input type="checkbox" name="deliver_top" style="width:auto" ${checked('deliver_top')}> Top</label><label><input type="checkbox" name="deliver_bottom" style="width:auto" ${checked('deliver_bottom')}> Bottom</label><label><input type="checkbox" name="deliver_dupatta" style="width:auto" ${checked('deliver_dupatta')}> Dupatta</label></div></div>
   ${Object.entries(measureGroups).map(([name,items])=>measurementInputs(name,items)).join('')}
@@ -181,7 +225,9 @@ function cashierView(){
   <div><label>Delivery date *</label>${coloredDateInput('cashierDate-'+m.id,m.delivery_date||'')}</div>
   <div><label>Product Barcode (optional${m.order_type==='new_make'?' for New Make':''})</label><input name="product_barcode" maxlength="120" value="${esc(m.product_barcode||'')}"></div>
   <div><label>Design Number (optional)</label><input name="design_number" maxlength="100" value="${esc(m.design_number||'')}"></div>
-  </div><p class="muted">Self Alter slots: ${m.delivery_date?countDate(m.delivery_date):'—'}/${capacity}. New Make is unlimited. Dates are booked on this confirmation.</p>
+  </div><p class="muted">Preparation required: <strong>${m.days_required??3} day(s)</strong> — set on the measurement slip. To change it, choose Complete measurements first.</p>
+  <p class="preparation-lead-warning hidden cashierLeadWarning" role="alert" aria-live="assertive"></p>
+  <p class="muted">Self Alter slots: ${m.delivery_date?countDate(m.delivery_date):'—'}/${capacity}. New Make is unlimited. Dates are booked on this confirmation.</p>
   <div class="panel cashierOverride ${full?'':'hidden'}"><h3>Full-date authorization</h3><p class="muted">Enter the Admin or Manager email and password for one extra Self Alter booking.</p><div class="fields"><div><label>Supervisor email</label><input name="reviewer_email" type="email" autocomplete="off"></div><div><label>Supervisor password</label><input name="reviewer_password" type="password" autocomplete="off"></div></div></div>
   <button type="submit" class="btn">Confirm Billing & Enable Print</button><button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Complete measurements first</button>
   ${role==='admin'&&!String(m.bill_no||'').trim()&&!orders.some(o=>o.measurement_id===m.id)?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Unbilled Draft</button>`:''}
@@ -194,9 +240,10 @@ function calendarView(){const year=month.getFullYear(),mo=month.getMonth(),first
 <div><label>Order type</label><select name="order_type" id="bookingType">${makeOptions()}</select></div>
 <div><label>Delivery date</label>${coloredDateInput('bookingDate',selectedDate)}</div>
 <div><label>Measurement slip (optional)</label><select name="measurement_id" id="bookingMeasurement"><option value="">None</option></select></div>
-<div><label>Preparation days</label><input name="days_required" type="number" min="0" max="60" value="3" required></div>
+<div><label>Preparation days</label><input name="days_required" id="bookingPrepDays" type="number" min="0" max="60" step="1" value="3" required></div>
+ <div class="span preparation-lead-warning hidden" id="bookingLeadWarning" role="alert" aria-live="assertive"></div>
 <div class="span"><label>Booking notes</label><textarea name="notes"></textarea></div>
-</div>${overrideFields('booking')}<button class="btn" ${!customers.length||selectedDate<today?'disabled':''}>Book delivery</button></form>`:'<p>Read-only calendar.</p>'}</div><div class="panel"><h3>Scheduled outfits</h3>${ordersTable(orders.filter(o=>o.delivery_date===selectedDate))}</div>`}
+</div>${overrideFields('booking')}<button class="btn" type="submit" ${!customers.length||selectedDate<today?'disabled':''}>Book delivery</button></form>`:'<p>Read-only calendar.</p>'}</div><div class="panel"><h3>Scheduled outfits</h3>${ordersTable(orders.filter(o=>o.delivery_date===selectedDate))}</div>`}
 function dailyView(){return `<div class="panel"><h3>Daily delivery list</h3><div class="actions"><div style="width:min(370px,100%)"><label>Choose delivery date</label>${coloredDateInput('dailyDate',selectedDate,true)}</div></div>${ordersTable(orders.filter(o=>o.delivery_date===selectedDate))}</div><div class="panel"><h3>Overdue and pending work</h3>${ordersTable(orders.filter(o=>o.delivery_date<today&&o.status!=='delivered'))}</div>`}
 function tailoringView(){const statuses=['pending','stitching','trial','alteration','ready','delivered'];return `<div class="panel"><h3>Update tailoring progress</h3><table><tr><th>Customer</th><th>Outfit</th><th>Due</th><th>Status</th></tr>${orders.filter(o=>o.status!=='delivered').map(o=>`<tr><td>${esc(customerName(o.customer_id))}</td><td>${esc(o.item_name)}</td><td>${esc(o.delivery_date)}</td><td><select data-status="${o.id}">${statuses.map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></td></tr>`).join('')}</table></div>`}
 function settingsView(){return `<div class="panel"><h3>Self Alter daily capacity</h3><p>Current limit: <strong>${capacity} Self Alter outfits per day</strong>. New Make is unlimited. Over-capacity Self Alter bookings require a new Admin/Manager password approval per booking.</p><form id="capacityForm"><label>Self Alter daily limit</label><input name="capacity" type="number" min="1" max="1000" value="${capacity}" required style="max-width:220px"><p><button class="btn">Save capacity</button></p></form></div>`}
@@ -253,6 +300,8 @@ document.querySelectorAll('.cashierForm').forEach(form=>{
    const day=String(f.get('delivery_date')||''),bill=String(f.get('bill_no')||'').trim(),item=String(f.get('item_name')||'').trim();
    if(!bill)throw Error('Enter the bill number to complete billing');
    if(!day||day<today)throw Error('Select a valid delivery date from the colored calendar');
+   const leadProblem=preparationLeadTimeMessage(day,m.days_required??3);
+   if(leadProblem)throw Error(leadProblem);
    const amountText=String(f.get('final_billing_amount')||'').trim();
    const finalAmount=Number(amountText);
    if(!/^\d+(?:\.\d{1,2})?$/.test(amountText)||!Number.isFinite(finalAmount)||finalAmount<=0||finalAmount>9999999999.99)
@@ -518,7 +567,7 @@ async function startBarcodeScan(){
   }
  }catch(err){stopBarcodeScan();if(msg)msg.textContent='Camera scanner unavailable: '+(err?.message||err)+'. You can enter or scan the barcode manually.'}
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();on('openAlerts','click',()=>{tab='alerts';render()});on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
 on('slipPhone','input',()=>{if($('forceNewCustomerValue'))$('forceNewCustomerValue').value='false';updatePhoneLookup()});
 on('slipPhone','blur',()=>{const matches=phoneMatches($('slipPhone')?.value);if(matches.length===1&&!editingDraftId&&$('forceNewCustomerValue')?.value!=='true')refillLastMeasurements(matches[0].id)});
 on('slipCustomerSelect','change',e=>refillLastMeasurements(e.target.value));
@@ -535,6 +584,8 @@ on('measurementForm','submit',async e=>{
  if(activeRecorder?.state==='recording')return notify('Stop voice recording before saving the draft');
  stopBarcodeScan();
  const f=new FormData(e.target),values={};
+ const leadProblem=preparationLeadTimeMessage(String(f.get('delivery_date')||''),f.get('days_required')||3);
+ if(leadProblem)return notify(leadProblem);
  for(const [group,items] of Object.entries(measureGroups)){for(const name of items){const key=group+' / '+name,v=String(f.get('m_'+key)||'').trim();if(v)values[key]=v}}
  const photo=f.get('photo_file');
  const deviceVideo=f.get('video_file'),cameraVideo=f.get('video_camera');
@@ -593,7 +644,7 @@ on('measurementForm','submit',async e=>{
 });
 on('prevMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()-1,1);render()});on('nextMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()+1,1);render()});document.querySelectorAll('[data-date]').forEach(el=>el.onclick=()=>{selectedDate=el.dataset.date;render()});
 const bookingCustomer=$('bookingCustomer'),bookingMeasurement=$('bookingMeasurement');if(bookingCustomer&&bookingMeasurement){const update=()=>{bookingMeasurement.innerHTML='<option value="">None</option>'+measurements.filter(m=>m.customer_id===bookingCustomer.value&&m.order_type===$('bookingType')?.value&&(!m.delivery_date||m.delivery_date===$('bookingDate')?.value)).map(m=>`<option value="${m.id}">${esc(m.slip_no||new Date(m.created_at).toLocaleString())}</option>`).join('')};bookingCustomer.onchange=update;if($('bookingType'))$('bookingType').onchange=()=>{update();updateOverrideVisibility('booking')};if($('bookingDate'))$('bookingDate').onchange=()=>{update();updateOverrideVisibility('booking')};update()}
-on('bookingForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target),type=f.get('order_type'),date=f.get('delivery_date');try{if(!date||date<today)throw Error('Select a valid delivery date');const override=await getOverrideForBooking(f,type,date);const {error:bookError}=await sb.rpc('book_order_v3',{p_customer_id:f.get('customer_id'),p_measurement_id:f.get('measurement_id')||null,p_item_name:f.get('item_name'),p_delivery_date:date,p_order_type:type,p_notes:f.get('notes'),p_days_required:Number(f.get('days_required')),p_override_token:override});if(bookError)throw bookError;notify('Delivery booked');await refresh()}catch(err){error(err)}});
+on('bookingForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target),type=f.get('order_type'),date=f.get('delivery_date');try{if(!date||date<today)throw Error('Select a valid delivery date');const leadProblem=preparationLeadTimeMessage(date,f.get('days_required'));if(leadProblem)throw Error(leadProblem);const override=await getOverrideForBooking(f,type,date);const {error:bookError}=await sb.rpc('book_order_v3',{p_customer_id:f.get('customer_id'),p_measurement_id:f.get('measurement_id')||null,p_item_name:f.get('item_name'),p_delivery_date:date,p_order_type:type,p_notes:f.get('notes'),p_days_required:Number(f.get('days_required')),p_override_token:override});if(bookError)throw bookError;notify('Delivery booked');await refresh()}catch(err){error(err)}});
 on('dailyDate','change',e=>{selectedDate=e.target.value;render()});document.querySelectorAll('[data-status]').forEach(el=>el.onchange=async()=>{try{const {error:x}=await sb.rpc('set_order_status',{p_order_id:el.dataset.status,p_status:el.value});if(x)throw x;notify('Status updated');await refresh()}catch(x){error(x)}});
 on('capacityForm','submit',async e=>{e.preventDefault();try{const {error:x}=await sb.rpc('set_capacity',{p_capacity:Number(new FormData(e.target).get('capacity'))});if(x)throw x;notify('Capacity updated');await refresh()}catch(x){error(x)}});
 on('addSalespersonForm','submit',async e=>{e.preventDefault();const name=String(new FormData(e.target).get('full_name')||'').trim();if(!name)return notify('Enter salesperson name');try{const {error:x}=await sb.from('salespeople').insert({full_name:name});if(x)throw x;notify('Salesperson added');await refresh()}catch(x){error(x)}});
