@@ -149,4 +149,32 @@
 .ready-scanner-row{flex-direction:column;align-items:stretch}
 .ready-scanner-row input{max-width:none}
 }
+
+/* Staff-only home dashboard: lookup by phone or GL slip and show operational status */
+.status-lookup-panel{margin-bottom:18px}
+.status-lookup-panel h3{margin:0 0 8px;font-size:20px}
+.status-search-form{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:14px 0}
+.status-search-form input{flex:1 1 260px;max-width:600px;min-width:0;font-size:16px;padding:12px}
+.status-search-form .btn{white-space:nowrap}
+.status-lookup-message{padding:13px;border:1px solid #d4c0ad;background:#fff8eb;border-radius:9px}
+.status-result-count{font-size:13px;font-weight:750;color:#625951;margin:8px 0 12px}
+.status-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.status-result-card{min-width:0;border:1px solid #ddd6ca;border-radius:11px;padding:15px;background:#fff}
+.status-result-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid #ede6dd}
+.status-result-top>strong{font-size:20px;color:#24201d}
+.status-pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:12px;line-height:1.25;font-weight:750}
+.status-pill.ready{background:#d9f4e2;color:#165b32}
+.status-pill.master{background:#deebff;color:#244f8e}
+.status-pill.notdue{background:#e9e9ee;color:#474960}
+.status-pill.delivered{background:#e1f4d8;color:#356321}
+.status-pill.attention{background:#fff2d1;color:#895913}
+.status-pill.overdue{background:#ffe0de;color:#962f2b}
+.status-pill.draft{background:#f4eada;color:#745633}
+.status-result-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 16px;padding:12px 0}
+.status-result-details>div{min-width:0}
+.status-result-details span{display:block;color:#766d62;font-size:11px;margin-bottom:3px}
+.status-result-details strong{display:block;overflow-wrap:anywhere;font-size:14px}
+.status-description{margin:4px 0 0;font-size:12px;line-height:1.5;color:#5e554b;border-top:1px dashed #e2dcd4;padding-top:10px}
+@media(max-width:950px){.status-result-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.status-search-form{flex-direction:column}.status-search-form .btn{width:100%}.status-result-top>strong{font-size:18px}.status-result-card{padding:12px}}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
