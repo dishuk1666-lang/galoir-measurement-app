@@ -523,7 +523,7 @@ function settingsView(){
  pending=waNotifications.filter(x=>x.status==='pending'||x.status==='processing').length,
  failed=waNotifications.filter(x=>x.status==='failed').length;
  const configStatus=waConfiguration
-  ?waConfiguration.configured?'API credentials configured (Meta approval must still be verified).':'WhatsApp API credentials missing.'
+  ?waConfiguration.configured?'WATI credentials present (verify approved Utility templates).':'WATI API token or sending channel missing.'
   :'Not checked — press Check API Setup.';
  const waRows=waNotifications.map(x=>{
   const m=measurements.find(v=>v.id===x.measurement_id);
@@ -533,18 +533,20 @@ function settingsView(){
  }).join('');
  return `<div class="panel"><h3>Self Alter daily capacity</h3><p>Current limit: <strong>${capacity} Self Alter outfits per day</strong>. New Make is unlimited. Over-capacity Self Alter bookings require a new Admin/Manager password approval per booking.</p><form id="capacityForm"><label>Self Alter daily limit</label><input name="capacity" type="number" min="1" max="1000" value="${capacity}" required style="max-width:220px"><p><button class="btn">Save capacity</button></p></form></div>
  <section class="panel whatsapp-settings-panel">
-  <div class="top"><h3>WhatsApp Business Notifications</h3><span class="pill">${waEnabled?'ENABLED':'OFF — SAFE MODE'}</span></div>
+  <div class="top"><h3>WhatsApp Business Notifications · WATI</h3><span class="pill">${waEnabled?'ENABLED':'OFF — SAFE MODE'}</span></div>
   <p>Send two customer-approved messages: <b>Order Finalised</b> (total, paid, balance and delivery date), and <b>Ready for Collection</b> (GL slip and pickup notification).</p>
-  <p class="muted">Only send to customers who expressly consent at Billing Desk. These are business-initiated messages: your two utility templates must be approved in Meta WhatsApp Manager. API access tokens stay in Supabase Edge Function Secrets.</p>
+  <p class="muted">Only send to customers who expressly consent at Billing Desk. These are business-initiated messages: your two Utility templates must be approved in WATI. The WATI API token stays in Supabase Edge Function Secrets.</p>
   <p><strong>Connection:</strong> ${esc(configStatus)}</p>
   <div class="actions">
    <button type="button" class="btn alt" id="waCheckSetup">Check API Setup</button>
    ${role==='admin'?`<button type="button" class="btn ${waEnabled?'alt':'primary'}" id="waToggle">${waEnabled?'Disable WhatsApp Automation':'Enable WhatsApp Automation'}</button>`:''}
   </div>
-  ${!waEnabled&&role==='admin'?'<label class="wa-approval"><input type="checkbox" id="waTemplatesApproved" style="width:auto"> I have approved the two WhatsApp templates in Meta WhatsApp Manager, verified our business number, and will collect customer opt-in.</label>':''}
+  ${!waEnabled&&role==='admin'?'<label class="wa-approval"><input type="checkbox" id="waTemplatesApproved" style="width:auto"> I have approved both Utility templates in WATI, verified our connected WhatsApp sending number, and will collect customer opt-in.</label>':''}
   <p class="muted">No messages will be sent until this integration is enabled by Admin. Newly finalized opted-in orders will be queued automatically after activation; already-billed orders are not contacted retroactively.</p>
-  <div class="wa-count-grid"><div><strong>${pending}</strong><small>Pending</small></div><div><strong>${submitted}</strong><small>Submitted to Meta</small></div><div><strong>${failed}</strong><small>Need attention</small></div></div>
-  <p class="muted">Submitted means Meta accepted the message request. Delivery/read receipts are not tracked yet. Showing the latest 60 queued records.</p>
+  <p class="muted"><b>WATI setup:</b> WATI Connector → API → Create API Token (permission: messagetemplatev3:write). Set <code>WATI_API_TOKEN</code>, <code>WATI_CHANNEL_NUMBER</code>, <code>WATI_TEMPLATE_ORDER_CONFIRMED</code>, and <code>WATI_TEMPLATE_READY_FOR_COLLECTION</code> as Supabase Edge Function Secrets. Never enter the token in this browser.</p>
+  <p class="muted"></p>
+  <div class="wa-count-grid"><div><strong>${pending}</strong><small>Pending</small></div><div><strong>${submitted}</strong><small>Accepted by WATI</small></div><div><strong>${failed}</strong><small>Need attention</small></div></div>
+  <p class="muted">Submitted means WATI accepted the message request. Delivery/read receipts are not tracked yet. Showing the latest 60 queued records.</p>
   <div class="table-scroll"><table><tr><th>GL Slip</th><th>Notification</th><th>State</th><th>Event Time</th><th>Error</th></tr>${waRows||'<tr><td colspan="5">No notifications have been queued yet.</td></tr>'}</table></div>
  </section>`;
 }
@@ -1139,7 +1141,7 @@ on('prevMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()-
 const bookingCustomer=$('bookingCustomer'),bookingMeasurement=$('bookingMeasurement');if(bookingCustomer&&bookingMeasurement){const update=()=>{bookingMeasurement.innerHTML='<option value="">None</option>'+measurements.filter(m=>m.customer_id===bookingCustomer.value&&m.order_type===$('bookingType')?.value&&(!m.delivery_date||m.delivery_date===$('bookingDate')?.value)).map(m=>`<option value="${m.id}">${esc(m.slip_no||new Date(m.created_at).toLocaleString())}</option>`).join('')};bookingCustomer.onchange=update;if($('bookingType'))$('bookingType').onchange=()=>{update();updateOverrideVisibility('booking')};if($('bookingDate'))$('bookingDate').onchange=()=>{update();updateOverrideVisibility('booking')};update()}
 on('bookingForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target),type=f.get('order_type'),date=f.get('delivery_date');try{if(!date||date<today)throw Error('Select a valid delivery date');const leadProblem=preparationLeadTimeMessage(date,f.get('days_required'));if(leadProblem)throw Error(leadProblem);const override=await getOverrideForBooking(f,type,date);const {error:bookError}=await sb.rpc('book_order_v3',{p_customer_id:f.get('customer_id'),p_measurement_id:f.get('measurement_id')||null,p_item_name:f.get('item_name'),p_delivery_date:date,p_order_type:type,p_notes:f.get('notes'),p_days_required:Number(f.get('days_required')),p_override_token:override});if(bookError)throw bookError;notify('Delivery booked');await refresh()}catch(err){error(err)}});
 on('dailyDate','change',e=>{selectedDate=e.target.value;render()});document.querySelectorAll('[data-status]').forEach(el=>el.onchange=async()=>{try{const {error:x}=await sb.rpc('set_order_status',{p_order_id:el.dataset.status,p_status:el.value});if(x)throw x;notify('Status updated');await refresh()}catch(x){error(x)}});
-on('waCheckSetup','click',async()=>{try{const c=await whatsappConnectionStatus();notify(c.configured?'WhatsApp credentials detected. Ensure both templates are approved.':'WhatsApp API credentials not configured yet.');render()}catch(e){error(e)}});
+on('waCheckSetup','click',async()=>{try{const c=await whatsappConnectionStatus();notify(c.configured?'WATI connection detected. Ensure both Utility templates are approved.':'WATI token or channel is not configured yet.');render()}catch(e){error(e)}});
 on('waToggle','click',async()=>{
  if(role!=='admin')return notify('Only Admin can change WhatsApp automation.');
  try{
@@ -1147,7 +1149,7 @@ on('waToggle','click',async()=>{
   if(next){
    if(!$('waTemplatesApproved')?.checked)throw Error('Confirm that the templates are approved and customer opt-in will be collected.');
    const state=await whatsappConnectionStatus();
-   if(!state?.configured)throw Error('Connect the Meta WhatsApp Cloud API credentials before enabling.');
+   if(!state?.configured)throw Error('Add the WATI API token and WhatsApp sending number securely before enabling.');
   }
   const {error:e}=await sb.rpc('galoir_set_whatsapp_enabled',{p_enabled:next});
   if(e)throw e;
