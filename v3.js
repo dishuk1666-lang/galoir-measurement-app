@@ -122,10 +122,53 @@ function statusLookupResults(query){
     <div><span>Expected Delivery</span><strong>${esc(expectation)}</strong></div>
     <div><span>Master Room Date</span><strong>${o?.order_type==='self_alter'?esc(outputDate(masterRoomDate(o))):'—'}</strong></div>
    </div><p class="status-description">${esc(state.note)}${o&&due>=today&&o.status!=='delivered'?' This is the booked delivery date, subject to outfit readiness.':''}</p>
+   ${m?`<div class="status-result-actions">
+    <button type="button" class="btn alt" data-status-view="${esc(m.id)}">View Measurements</button>
+    ${m.photo_path?`<button type="button" class="btn alt" data-status-photo="${esc(m.id)}">View Photo</button>`:''}
+    ${m.workflow_status==='billed'&&m.bill_no?`<button type="button" class="btn" data-status-print="${esc(m.id)}">View / Print A4 Slip</button>`:''}
+   </div>`:'<p class="muted">No measurement slip is linked to this booking.</p>'}
   </article>`;
  }).join('');
  return `<p class="status-result-count">${count} matching record${count===1?'':'s'}${count>60?' · showing first 60':''}</p>
  <div class="status-result-grid">${cards}</div>`;
+}
+function statusSlipPreviewHtml(m){
+ const c=customers.find(x=>x.id===m.customer_id);
+ const order=orders.find(o=>o.measurement_id===m.id);
+ const billed=m.workflow_status==='billed'&&Boolean(m.bill_no);
+ const measureValue=v=>v==null||String(v).trim()==='0'?'':String(v).trim();
+ const meta=[
+  ['GL Slip Number',m.slip_no||'—'],['Stage',billed?'Billed':'Draft'],
+  ['Customer',c?.full_name||'—'],['Phone',c?.phone||'—'],
+  ['Outfit',m.item_name||order?.item_name||'—'],['Order Type',m.order_type==='new_make'?'New Make':'Self Alter'],
+  ['Salesperson',m.salesperson_name||'—'],['Delivery Date',m.delivery_date?outputDate(m.delivery_date):'Not booked'],
+  ['Bill Number',m.bill_no||'Pending'],['Design Number',m.design_number||'—'],
+  ['Product Barcode',m.product_barcode||'—'],['Preparation Days',m.days_required??'—'],
+  ['Company',m.company_name||'—'],['Reviewed By',m.reviewed_by||'—'],
+  ['Size Basis',m.ready_body||'—']
+ ];
+ const groups=Object.entries(measureGroups).map(([g,items])=>`
+  <section class="status-preview-measurements">
+   <h4>${esc(measurementGroupDisplayName(g))}</h4>
+   <div class="status-preview-grid">
+    ${items.map(n=>`<div class="status-preview-cell"><span>${esc(n)}</span>
+     <strong>${esc(measureValue(m.values?.[g+' / '+n]))||'—'}</strong></div>`).join('')}
+   </div>
+  </section>`).join('');
+ const deliver=[m.deliver_top?'Top':null,m.deliver_bottom?'Bottom':null,m.deliver_dupatta?'Dupatta':null].filter(Boolean);
+ return `<div class="status-preview-header">
+  <div><div class="status-preview-brand">GALOIR</div><h3 id="statusSlipTitle">Measurement Slip ${esc(m.slip_no||'—')}</h3></div>
+  <span class="status-pill ${billed?'ready':'draft'}">${billed?'Billed':'Draft — not printable'}</span>
+ </div>
+ <div class="status-preview-meta">${meta.map(([label,v])=>`<div><span>${esc(label)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
+ ${groups}
+ <section class="status-preview-notes">
+  <div><h4>Remarks</h4><p>${esc(m.remarks||'—')}</p></div>
+  <div><h4>Fitting Instructions</h4><p>${esc(m.fitting_notes||'—')}</p></div>
+ </section>
+ <p class="muted">Items to deliver: ${esc(deliver.length?deliver.join(', '):'Not specified')}</p>
+ ${m.photo_path?'<p class="muted">Reference photo attached — use View Photo in the search result.</p>':''}
+ <p class="muted">${billed?'Open View / Print A4 Slip from the search result for the official tailor printout.':'The cashier must finish billing before this slip can be printed.'}</p>`;
 }
 function dashboardView(){
  const due=deliveriesToday(),master=masterRoomToday();
@@ -142,6 +185,10 @@ function dashboardView(){
   </form>
   <div id="statusSearchResults" aria-live="polite">${statusLookupResults(statusSearchQuery)}</div>
  </section>
+ <dialog id="statusSlipDialog" class="status-slip-dialog" aria-labelledby="statusSlipTitle">
+  <div class="status-slip-dialog-controls"><span>GALOIR Measurement Preview</span><button id="closeStatusSlipPreview" type="button" class="btn alt">Close ✕</button></div>
+  <div id="statusSlipPreview"></div>
+ </dialog>
  <div class="dashboard-summary">
   <div class="card"><div class="muted">Deliver today</div><div class="stat">${due.length-delivered}<small> remaining / ${due.length} total</small></div></div>
   <div class="card"><div class="muted">Send to master room</div><div class="stat">${master.length-sent}<small> pending / ${master.length} today</small></div></div>
@@ -917,6 +964,29 @@ function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListene
  on('statusSearchForm','submit',e=>{e.preventDefault();statusSearchQuery=String($('statusSearchInput')?.value||'').trim();if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults(statusSearchQuery)});
  on('statusSearchInput','input',e=>{statusSearchQuery=e.target.value;if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults(statusSearchQuery)});
  on('statusSearchClear','click',()=>{statusSearchQuery='';if($('statusSearchInput')){$('statusSearchInput').value='';$('statusSearchInput').focus()}if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults('')});
+ // Delegated handler survives a fresh search that replaces result cards.
+ on('statusSearchResults','click',e=>{
+  const el=e.target?.closest?.('[data-status-photo], [data-status-view], [data-status-print]');
+  if(!el)return;
+  const id=el.dataset.statusPhoto||el.dataset.statusView||el.dataset.statusPrint;
+  const m=measurements.find(x=>x.id===id);
+  if(!m)return notify('Measurement slip not found. Refresh the dashboard and try again.');
+  if(el.hasAttribute('data-status-photo')){
+   if(m.photo_path)openPrivateMedia(m,'photo');
+   else notify('No photo attached to this slip.');
+  }else if(el.hasAttribute('data-status-print')){
+   if(m.workflow_status==='billed'&&m.bill_no)printSlip(m).catch(error);
+   else notify('Printing is available only after billing.');
+  }else{
+   const dialog=$('statusSlipDialog'),body=$('statusSlipPreview');
+   if(!dialog||!body)return;
+   body.innerHTML=statusSlipPreviewHtml(m);
+   if(typeof dialog.showModal==='function')dialog.showModal();
+   else{dialog.setAttribute('open','');dialog.classList.add('status-slip-fallback')}
+  }
+ });
+ on('closeStatusSlipPreview','click',()=>{const dialog=$('statusSlipDialog');if(dialog?.close)dialog.close();else{dialog?.removeAttribute('open');dialog?.classList.remove('status-slip-fallback')}});
+ on('statusSlipDialog','click',e=>{if(e.target?.id==='statusSlipDialog'&&e.target?.close)e.target.close()});
  on('openAlerts','click',()=>{tab='alerts';render()});on('openReadyScanner','click',()=>{stopBarcodeScan();tab='scanner';render()});on('readyScannerForm','submit',async e=>{e.preventDefault();try{await markReadyByScannedCode($('readySlipInput')?.value)}catch(err){error(err);if($('readyScanStatus'))$('readyScanStatus').textContent='Scan error: '+(err.message||err)}});on('startReadyCamera','click',startReadyCamera);on('stopReadyCamera','click',stopReadyCamera);on('slipType','change',()=>updateOverrideVisibility('slip'));on('slipDate','change',()=>updateOverrideVisibility('slip'));on('bookingType','change',()=>updateOverrideVisibility('booking'));on('bookingDate','change',()=>updateOverrideVisibility('booking'));on('recordVoice','click',startRecording);
 on('slipPhone','input',()=>{if($('forceNewCustomerValue'))$('forceNewCustomerValue').value='false';updatePhoneLookup()});
 on('slipPhone','blur',()=>{const matches=phoneMatches($('slipPhone')?.value);if(matches.length===1&&!editingDraftId&&$('forceNewCustomerValue')?.value!=='true')refillLastMeasurements(matches[0].id)});
