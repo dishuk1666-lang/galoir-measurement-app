@@ -394,7 +394,7 @@ function measurementsView(){
   <div class="span" id="newCustomerBox"><label>New customer name</label><input id="slipNewCustomerName" name="customer_name" maxlength="120" value="${esc(c?.full_name||'')}"></div>
   <div><label>Salesperson</label><select name="salesperson_name"><option value="">Select (optional for draft)</option>${salespeople.filter(s=>s.active).map(s=>`<option value="${esc(s.full_name)}" ${selected('salesperson_name',s.full_name)}>${esc(s.full_name)}</option>`).join('')}</select>${!ready?'<p class="muted">Admin can add salespeople later</p>':''}</div>
   <div><label>New Make / Self Alter</label><select name="order_type" id="slipType"><option value="new_make" ${!d||selected('order_type','new_make')?'selected':''}>New Make — unlimited</option><option value="self_alter" ${selected('order_type','self_alter')}>Self Alter — capacity controlled</option></select></div>
-  <div><label>Outfit / Article (optional for draft)</label><input name="item_name" maxlength="200" value="${field('item_name')}"></div>
+  <input type="hidden" name="item_name" value="${field('item_name')}">
   <div><label>Product barcode (optional for New Make)</label><input id="slipBarcode" type="text" name="product_barcode" maxlength="120" value="${field('product_barcode')}"><div class="actions"><button class="btn alt" type="button" id="startBarcodeScan">Scan with camera</button><button class="btn alt hidden" type="button" id="stopBarcodeScan">Stop</button></div><video id="barcodeVideo" autoplay playsinline muted class="hidden" style="width:100%;max-height:220px;object-fit:cover;border-radius:9px"></video><p id="barcodeScanStatus" class="muted">Supports handheld barcode scanners and camera where available.</p></div>
   <div><label>Design Number (optional)</label><input type="text" name="design_number" value="${field('design_number')}" maxlength="100"></div>
   <div><label>Final Billing Amount (₹) — required for billing</label><input type="number" name="final_billing_amount" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${field('final_billing_amount')}"><p class="muted">May be blank in a draft. Mandatory before the cashier confirms billing. Not printed on the tailor slip.</p></div>
@@ -458,7 +458,7 @@ function cashierView(){
   <div class="fields">
   <div><label>Bill number *</label><input name="bill_no" maxlength="100" required></div>
   <div><label>Final Billing Amount (₹) *</label><input name="final_billing_amount" type="number" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" value="${esc(m.final_billing_amount??'')}" required></div>
-  <div><label>Outfit / Article *</label><input name="item_name" maxlength="200" value="${esc(m.item_name||'')}" required></div>
+  <input type="hidden" name="item_name" value="${esc(m.item_name||(m.order_type==='new_make'?'New Make Outfit':'Self Alter Outfit'))}">
   <div><label>Delivery date *</label>${coloredDateInput('cashierDate-'+m.id,m.delivery_date||'')}</div>
   <div><label>Product Barcode (optional${m.order_type==='new_make'?' for New Make':''})</label><input name="product_barcode" maxlength="120" value="${esc(m.product_barcode||'')}"></div>
   <div><label>Design Number (optional)</label><input name="design_number" maxlength="100" value="${esc(m.design_number||'')}"></div>
