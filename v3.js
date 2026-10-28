@@ -71,7 +71,7 @@ function masterRoomToday(){
  &&(!o.master_room_sent_at||istDate(o.master_room_sent_at)===today))
  .sort((a,b)=>a.delivery_date.localeCompare(b.delivery_date));
 }
-function deliveriesToday(){return orders.filter(o=>o.delivery_date===today).sort((a,b)=>Number(a.status==='delivered')-Number(b.status==='delivered'))}
+function deliveriesToday(){return orders.filter(o=>o.delivery_date===today||(o.delivery_date<today&&o.status!=='delivered')).sort((a,b)=>Number(a.status==='delivered')-Number(b.status==='delivered')||String(a.delivery_date).localeCompare(String(b.delivery_date)))}
 function worklistRow(o,kind){
  const m=measurements.find(x=>x.id===o.measurement_id);
  const c=customers.find(x=>x.id===o.customer_id);
@@ -83,7 +83,7 @@ function worklistRow(o,kind){
  const label=isMaster?'Sent to master room':'Delivered to customer';
  const badge=isMaster?(sent?'Sent to master':'Awaiting handoff'):(alreadyDelivered?'Delivered':o.is_ready?'Ready for delivery':'Not ready');
  const extra=isMaster?`<small class="worklist-date">${masterRoomDate(o)<today?'⚠ Overdue for master room':'Send today'} · Delivery ${esc(outputDate(o.delivery_date))}</small>`:
- `<small class="worklist-date">Delivery ${esc(outputDate(o.delivery_date))} · ${o.is_ready?'Outfit ready':'Outfit not ready'}</small>`;
+ `<small class="worklist-date">${o.delivery_date<today?'⚠ Overdue · original delivery ':'Delivery '}${esc(outputDate(o.delivery_date))} · ${o.is_ready?'Outfit ready':'Outfit not ready'}</small>`;
  return `<article class="worklist-row ${checked?'worklist-checked':''}">
  <div class="worklist-entry">
   <strong>${esc(c?.full_name||customerName(o.customer_id))}</strong>
@@ -259,7 +259,7 @@ function manualImportView(){
  const ed=all.find(m=>m.id===manualEditingId);
  const open=all.filter(m=>orders.some(o=>o.measurement_id===m.id&&o.status!=='delivered'));
  const stats=[['Total imported',all.length],['Still open',open.length],['Measurements pending',all.filter(m=>m.needs_measurement_entry).length],['Booklet photos needed',all.filter(m=>!m.manual_booklet_photo_path).length],['Due or overdue',open.filter(m=>m.delivery_date<=today).length]];
- const editor=ed?`<section class="panel manual-import-editor"><div class="manual-heading"><h3>Complete Imported Slip ${esc(ed.slip_no)}</h3><button class="btn alt" type="button" id="manualCancelEdit">Close</button></div>
+ const editor=ed?`<section class="panel manual-import-editor" id="manualEditor"><div class="manual-heading"><h3>Complete Imported Slip ${esc(ed.slip_no)}</h3><button class="btn alt" type="button" id="manualCancelEdit">Close</button></div>
   <p class="muted">Original: ${esc(ed.manual_booklet_name)} / ${esc(ed.manual_slip_no)} · Bill ${esc(ed.bill_no)}. Previously billed: no new invoice.</p>
   <form id="manualEditForm">
    <div><label>Upload / replace booklet page photo</label><input type="file" name="manual_booklet_file" accept="image/*" capture="environment"><p class="muted">Private photo, up to 15 MB. Cover any written customer phone number before photographing; the page may appear on the tailor slip.</p></div>
@@ -445,13 +445,13 @@ function dashboardView(){
   <div id="statusSlipPreview"></div>
  </dialog>
  <div class="dashboard-summary">
-  <div class="card"><div class="muted">Deliver today</div><div class="stat">${due.length-delivered}<small> remaining / ${due.length} total</small></div></div>
+  <div class="card"><div class="muted">Due today + overdue</div><div class="stat">${due.length-delivered}<small> remaining / ${due.length} total</small></div></div>
   <div class="card"><div class="muted">Send to master room</div><div class="stat">${master.length-sent}<small> pending / ${master.length} today</small></div></div>
   <div class="card"><div class="muted">Overdue deliveries</div><div class="stat">${overdueDelivery}</div></div>
   <div class="card"><div class="muted">Outfits ready</div><div class="stat">${orders.filter(o=>o.is_ready&&o.status!=='delivered').length}</div></div>
  </div>
  <div class="dashboard-two-columns">
-  <section class="panel dashboard-worklist"><div class="dashboard-list-heading"><h3>🚚 Deliver Today</h3><span>${delivered} of ${due.length} delivered</span></div>
+  <section class="panel dashboard-worklist"><div class="dashboard-list-heading"><h3>🚚 Deliver Today / Overdue</h3><span>${delivered} of ${due.length} delivered</span></div>
    <p class="muted">Tick <b>Delivered</b> after handing over the outfit. An outfit must be marked Ready first.</p>
    ${due.length?due.map(o=>worklistRow(o,'deliver')).join(''):'<p class="dashboard-empty">No deliveries scheduled today.</p>'}
   </section>
