@@ -634,6 +634,81 @@ function bindColoredCalendars(){
   };
  });
 }
+let measurementRecoveryTimer=null,measurementSaving=false,measurementDirty=false;
+function measurementRecoveryKey(){return me?.id?'galoir:measurement-recovery:v1:'+me.id:'';}
+function readMeasurementRecovery(){
+ const key=measurementRecoveryKey();if(!key)return null;
+ try{
+  const record=JSON.parse(sessionStorage.getItem(key)||'null');
+  if(!record||record.version!==1||record.userId!==me.id||!record.fields||typeof record.fields!=='object')return null;
+  if(!Number.isFinite(record.timestamp)||Date.now()-record.timestamp>8*60*60*1000||record.timestamp>Date.now()+60000){
+   sessionStorage.removeItem(key);return null;
+  }
+  return record;
+ }catch{return null}
+}
+function clearMeasurementRecovery(){
+ clearTimeout(measurementRecoveryTimer);measurementRecoveryTimer=null;measurementDirty=false;
+ const key=measurementRecoveryKey();if(key)try{sessionStorage.removeItem(key)}catch{}
+}
+function measurementSaveFeedback(message,kind='info'){
+ const label=$('slipSaveFeedback');
+ if(label){label.textContent=message;label.className='slip-save-feedback '+(kind==='error'?'slip-save-error':kind==='success'?'slip-save-success':'slip-save-info');}
+}
+function captureMeasurementRecovery(){
+ if(measurementSaving||!me?.id||tab!=='measurements')return false;
+ const form=$('measurementForm');if(!form)return false;
+ const fields={};let hasAttachments=false;
+ for(const input of Array.from(form.elements||[])){
+  if(!input.name||input.disabled||input.type==='submit'||input.type==='button')continue;
+  if(input.type==='file'){if(input.files?.length)hasAttachments=true;continue}
+  if(input.type==='checkbox')fields[input.name]=!!input.checked;
+  else if(input.type==='radio'){if(input.checked)fields[input.name]=input.value}
+  else fields[input.name]=String(input.value??'');
+ }
+ const record={version:1,userId:me.id,timestamp:Date.now(),draftId:editingDraftId||null,fields,hasAttachments};
+ const key=measurementRecoveryKey();
+ try{
+  sessionStorage.setItem(key,JSON.stringify(record));measurementDirty=true;
+  measurementSaveFeedback('Unsaved entries protected in this tab. Tap Save Draft to store them in GALOIR.'+(hasAttachments?' Reattach photos/videos if you reload this page.':''),'info');
+  return true;
+ }catch{
+  measurementSaveFeedback('Temporary backup unavailable. Save Draft before leaving the app.','error');return false;
+ }
+}
+function scheduleMeasurementRecovery(){
+ if(measurementSaving)return;
+ measurementDirty=true;measurementSaveFeedback('Unsaved entries. Tap Save Draft — temporary recovery is enabled.','info');
+ clearTimeout(measurementRecoveryTimer);measurementRecoveryTimer=setTimeout(()=>{measurementRecoveryTimer=null;captureMeasurementRecovery()},220);
+}
+function restoreMeasurementRecovery(){
+ const record=readMeasurementRecovery(),form=$('measurementForm');
+ if(!record||!form||record.draftId!==(editingDraftId||null))return false;
+ const fields=record.fields;
+ const setField=(input)=>{
+  if(!input?.name||input.type==='file'||!Object.prototype.hasOwnProperty.call(fields,input.name))return;
+  const val=fields[input.name];
+  if(input.type==='checkbox')input.checked=!!val;
+  else if(input.type==='radio')input.checked=input.value===val;
+  else input.value=String(val??'');
+ };
+ for(const el of Array.from(form.elements||[]))if(el.name==='customer_phone'||el.name==='force_new_customer')setField(el);
+ updatePhoneLookup();
+ for(const el of Array.from(form.elements||[]))setField(el);
+ updateOverrideVisibility('slip');
+ measurementDirty=true;
+ measurementSaveFeedback('Recovered unsaved entries. Tap Save Draft to save to GALOIR.'+(record.hasAttachments?' Reattach any photo/video before saving.':''),'info');
+ return true;
+}
+function prepareMeasurementRecoveryOnLogin(){
+ if(!can('measurements'))return;const saved=readMeasurementRecovery();if(!saved)return;
+ tab='measurements';editingDraftId=saved.draftId||null;
+}
+function measurementSaveFailure(message){
+ const msg=String(message||'Unable to save');
+ measurementSaveFeedback('NOT SAVED: '+msg+'. Your entries remain on this screen. Retry Save Draft.','error');
+ notify('Not saved: '+msg);
+}
 function measurementsView(){
  const d=measurements.find(m=>m.id===editingDraftId&&m.workflow_status==='draft')||null;
  const c=customerNamePhone(d);
@@ -684,7 +759,10 @@ function measurementsView(){
   </div>
   <div><label>Voice remarks</label><div class="actions"><button type="button" class="btn alt" id="recordVoice">● Record</button><button type="button" class="btn alt" id="stopVoice" disabled>Stop</button></div><p id="voiceStatus" class="muted">No new voice note recorded</p></div>
  </div>
- <div class="actions"><button class="btn" id="saveSlipBtn">Save Draft${d?' '+esc(d.slip_no):' — Reserve GL Slip No.'}</button>${d?'<button type="button" class="btn alt" id="cancelDraftEdit">New slip instead</button>':''}</div>
+ <div class="slip-save-bar">
+ <div class="actions"><button type="submit" class="btn" id="saveSlipBtn">Save Draft${d?' '+esc(d.slip_no):' — Reserve GL Slip No.'}</button>${d?'<button type="button" class="btn alt" id="cancelDraftEdit">New slip instead</button>':''}</div>
+ <div id="slipSaveFeedback" class="slip-save-feedback slip-save-info" role="status" aria-live="polite">Tap Save Draft to store measurements in GALOIR. Unfinished entries can be recovered temporarily in this tab.</div>
+ </div>
  <p class="muted">Bill number and delivery confirmation are entered in Billing Desk. Printing is enabled after billing.</p>
  </form></div>`:''}
  <div class="panel"><h3>Measurement History</h3><input id="searchMeasurements"><div id="measurementRows">${measurementTable(measurements)}</div></div>`;
