@@ -302,4 +302,27 @@
  .slip-save-bar .btn{width:100%;min-height:48px}
  .slip-save-feedback{font-size:12px}
 }
+
+/* Searchable GL slip lifecycle / reusable draft numbers */
+.slip-history-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:15px}
+.slip-history-heading h3{margin:0 0 7px}
+.slip-history-heading p{margin:0}
+.slip-history-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:17px}
+.slip-history-stats .card{display:flex;flex-direction:column;gap:8px;margin:0}
+.slip-history-stats .card span{font-size:12px;color:#6a6055}
+.slip-history-stats .card strong{font-size:23px;color:#27231f}
+#slipHistorySearch{width:100%;max-width:520px;height:44px;min-height:44px;margin:7px 0 14px}
+.slip-history-table{min-width:750px}
+.slip-history-table td{font-size:13px;vertical-align:middle}
+.slip-history-pill{display:inline-block;padding:6px 9px;border-radius:99px;background:#ebe9e5;font-size:12px;font-weight:750;white-space:nowrap}
+.slip-history-pill.deleted{background:#ffe5df;color:#932c21}
+.slip-history-pill.reused{background:#dfeaff;color:#244b87}
+.slip-history-pill.billed{background:#dff3e7;color:#246039}
+.slip-history-pill.created{background:#f2ecdf;color:#695425}
+@media(max-width:700px){
+.slip-history-heading{flex-direction:column}
+.slip-history-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+.slip-history-stats .card strong{font-size:19px}
+#slipHistorySearch{max-width:none}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
