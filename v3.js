@@ -800,13 +800,15 @@ async function printSlip(m){
       .measure-name{font-size:14px;font-weight:550;overflow-wrap:anywhere}
       .measure-value{font-size:18px;font-weight:800;text-align:right;overflow-wrap:anywhere;min-width:0}
       .remarks-area{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;min-height:118px;flex-shrink:0}
-      .remarks-area.with-photo{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 126px;min-height:134px}
+      /* Pant/Plazo section is gone: use the freed vertical space for a much larger
+         reference image (roughly 5 × 5 cm) alongside both instruction boxes. */
+      .remarks-area.with-photo{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 222px;min-height:225px}
       .remark-panel,.reference-panel{display:flex;flex-direction:column;min-width:0}
       .remark-panel h3,.reference-panel h3{font-size:14px;margin:0 0 5px;font-weight:800}
       .remark-box{flex:1;border:1px solid #aaa;padding:8px;min-height:86px;
         white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;font-weight:650;line-height:1.35}
-      .reference-image-box{display:flex;flex:1;align-items:center;justify-content:center;border:1px solid #aaa;padding:4px;background:white}
-      .reference-photo{display:block;width:auto;height:auto;max-width:114px;max-height:105px;object-fit:contain}
+      .reference-image-box{display:flex;flex:1;align-items:center;justify-content:center;min-height:208px;border:1px solid #aaa;padding:5px;background:white;overflow:hidden}
+      .reference-photo{display:block;width:auto;height:auto;max-width:208px;max-height:202px;object-fit:contain}
       .photo-load-warning{font-size:12px;color:#a12a2a;font-weight:700}
       .print-toolbar button:disabled{opacity:.55;cursor:not-allowed}
       .print-footer{padding-top:4px;border-top:1px solid #bbb;font-size:10px;color:#444;flex-shrink:0}
@@ -818,9 +820,10 @@ async function printSlip(m){
       .compact-print .measure-cell{min-height:25px;padding:2px 7px}
       .compact-print .measure-section h3{padding:5px 9px}
       .compact-print .remarks-area{min-height:96px}
-      .compact-print .remarks-area.with-photo{min-height:110px}
+      .compact-print .remarks-area.with-photo{min-height:205px}
       .compact-print .remark-box{min-height:68px;padding:6px}
-      .compact-print .reference-photo{max-height:84px}
+      .compact-print .reference-image-box{min-height:188px}
+      .compact-print .reference-photo{max-width:208px;max-height:184px}
       @page{size:A4 portrait;margin:8mm}
       @media print{
         /* iPadOS and printer rounding can paginate a nearly full A4 box.
