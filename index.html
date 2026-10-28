@@ -286,4 +286,20 @@
  .manual-heading{align-items:stretch;flex-direction:column}
  .manual-heading label{max-width:none;flex:none}
 }
+
+/* Mobile Sales measurement save: prominent confirmation and temporary recovery state. */
+.slip-save-bar{display:flex;flex-direction:column;gap:9px;padding:15px;border:1px solid #d9d1c5;border-radius:10px;background:#f8f5ef;margin:12px 0}
+.slip-save-bar #saveSlipBtn{font-size:15px;font-weight:800;min-height:46px}
+.slip-save-bar #saveSlipBtn:disabled{opacity:.65;cursor:wait}
+.slip-save-feedback{font-size:13px;line-height:1.5;border-radius:8px;padding:9px 11px;overflow-wrap:anywhere}
+.slip-save-info{color:#615027;background:#fff7df;border:1px solid #e0c98b}
+.slip-save-success{color:#246037;background:#e6f7e9;border:1px solid #a0d8ad}
+.slip-save-error{color:#9b2e2e;background:#fff0ec;border:1px solid #e8aaa1;font-weight:700}
+@media(max-width:700px){
+ .slip-save-bar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom, 0px));z-index:12;
+  border:1.5px solid #b6a797;box-shadow:0 3px 18px rgba(39,34,29,.15);padding:12px;background:#fff}
+ .slip-save-bar .actions{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+ .slip-save-bar .btn{width:100%;min-height:48px}
+ .slip-save-feedback{font-size:12px}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
