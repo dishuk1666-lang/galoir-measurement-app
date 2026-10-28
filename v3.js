@@ -763,8 +763,8 @@ async function printSlip(m){
       html,body{margin:0;padding:0;background:#ececec;color:#171717;font-family:Arial,Helvetica,sans-serif}
       .print-toolbar{padding:13px;text-align:center}
       .print-toolbar button{border:0;border-radius:7px;padding:11px 24px;background:#25211e;color:#fff;font-size:15px;cursor:pointer}
-      #printPage{width:194mm;height:279mm;overflow:hidden;background:#fff;margin:0 auto 22px;box-shadow:0 2px 18px #0002}
-      #printSheet{width:194mm;min-height:279mm;height:auto;display:flex;flex-direction:column;gap:6px;padding:0 1mm;
+      #printPage{width:190mm;height:265mm;overflow:hidden;background:#fff;margin:0 auto 12px;box-shadow:0 2px 18px #0002;break-inside:avoid;page-break-inside:avoid}
+      #printSheet{width:190mm;min-height:265mm;height:auto;display:flex;flex-direction:column;gap:6px;padding:0 1mm;
         font-size:14px;line-height:1.22;transform-origin:top left;overflow:visible}
       .slip-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
         padding:2px 3px 6px;border-bottom:2px solid #292521;flex-shrink:0}
@@ -823,10 +823,19 @@ async function printSlip(m){
       .compact-print .reference-photo{max-height:84px}
       @page{size:A4 portrait;margin:8mm}
       @media print{
-        html,body{width:194mm;margin:0!important;padding:0!important;background:#fff!important}
+        /* iPadOS and printer rounding can paginate a nearly full A4 box.
+           Keep headroom and prevent content from flowing into a second sheet. */
+        html,body{width:190mm!important;height:265mm!important;max-height:265mm!important;
+          margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important}
         .print-toolbar{display:none!important}
-        #printPage{width:194mm;height:279mm;margin:0;box-shadow:none;overflow:hidden}
-        #printSheet{width:194mm;min-height:279mm;height:auto}
+        #printPage{display:block!important;position:relative!important;
+          width:190mm!important;height:265mm!important;max-height:265mm!important;
+          margin:0!important;padding:0!important;box-shadow:none!important;
+          overflow:hidden!important;break-inside:avoid!important;page-break-inside:avoid!important;
+          break-after:avoid!important;page-break-after:avoid!important}
+        #printSheet{width:190mm!important;height:auto!important;min-height:0!important;
+          max-width:190mm!important;margin:0!important;overflow:visible!important;
+          break-inside:avoid!important;page-break-inside:avoid!important}
         body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
       }
     </style></head><body>
@@ -869,7 +878,8 @@ async function printSlip(m){
       // could shrink rows over one another while scrollHeight stayed one page.
       sheet.style.transform='none';
       sheet.classList.remove('compact-print');
-      const usableHeightPx=page?.clientHeight||279/25.4*96;
+      const maxPageHeightPx=265/25.4*96;
+      const usableHeightPx=Math.min(page?.clientHeight||maxPageHeightPx,maxPageHeightPx);
       const fits=()=>sheet.scrollHeight<=usableHeightPx-4;
       if(!fits())sheet.classList.add('compact-print');
       // Never remove an attached photo. Scale the complete printable content, including the image.
