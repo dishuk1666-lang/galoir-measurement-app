@@ -1474,14 +1474,16 @@ on('searchCustomers','input',e=>{$('customerRows').innerHTML=customerTable(custo
 on('searchMeasurements','input',e=>{const term=e.target.value.toLowerCase().trim();$('measurementRows').innerHTML=measurementTable(measurements.filter(m=>{const c=customers.find(x=>x.id===m.customer_id);return `${c?.full_name||''} ${c?.phone||''} ${m.fitting_notes||''} ${m.salesperson_name||''} ${m.slip_no||''} ${m.remarks||''} ${m.bill_no||''} ${m.item_name||''} ${m.product_barcode||''} ${customers.find(x=>x.id===m.customer_id)?.phone||''}`.toLowerCase().includes(term)}))});
 on('measurementForm','submit',async e=>{
  e.preventDefault();
- if(activeRecorder?.state==='recording')return notify('Stop voice recording before saving the draft');
+ captureMeasurementRecovery(); // Save unsaved fields before making any network request.
+ if(measurementSaving)return measurementSaveFeedback('Already saving. Please do not submit twice.','info');
+ if(activeRecorder?.state==='recording')return measurementSaveFailure('Stop voice recording before saving the draft');
  stopBarcodeScan();
  const f=new FormData(e.target);
  // Keep old non-visible Pant / Plazo fields in a previously saved draft.
  const original=editingDraftId?measurements.find(x=>x.id===editingDraftId)?.values||{}:{};
  const values={...original};
  const leadProblem=preparationLeadTimeMessage(String(f.get('delivery_date')||''),f.get('days_required')||3);
- if(leadProblem)return notify(leadProblem);
+ if(leadProblem)return measurementSaveFailure(leadProblem);
  for(const [group,items] of Object.entries(measureGroups)){
   for(const name of items){
    const key=group+' / '+name,v=String(f.get('m_'+key)||'').trim();
@@ -1495,20 +1497,20 @@ on('measurementForm','submit',async e=>{
  const photo=f.get('photo_file');
  const deviceVideo=f.get('video_file'),cameraVideo=f.get('video_camera');
  const videoSelections=[deviceVideo,cameraVideo].filter(file=>file instanceof File&&file.size>0);
- if(videoSelections.length>1)return notify('Select one video: upload or record');
+ if(videoSelections.length>1)return measurementSaveFailure('Select one video: upload or record');
  const video=videoSelections[0]||null;
- if(photo instanceof File&&photo.size>15728640)return notify('Photo exceeds 15 MB');
- if(recordedAudio?.size>15728640)return notify('Voice note exceeds 15 MB');
- if(video?.size>41943040)return notify('Video exceeds the 40 MB upload limit');
+ if(photo instanceof File&&photo.size>15728640)return measurementSaveFailure('Photo exceeds 15 MB');
+ if(recordedAudio?.size>15728640)return measurementSaveFailure('Voice note exceeds 15 MB');
+ if(video?.size>41943040)return measurementSaveFailure('Video exceeds the 40 MB upload limit');
  if(video){
   const supported=['video/mp4','video/quicktime','video/webm','video/x-m4v'];
   const mime=String(video.type||'').toLowerCase().split(';')[0];
   const extension=String(video.name||'').toLowerCase().split('.').pop();
-  if(!supported.includes(mime)&&!(mime===''&&['mp4','mov','webm','m4v'].includes(extension)))return notify('Please choose an MP4, MOV or WebM video');
+  if(!supported.includes(mime)&&!(mime===''&&['mp4','mov','webm','m4v'].includes(extension)))return measurementSaveFailure('Please choose an MP4, MOV or WebM video');
  }
  const amountText=String(f.get('final_billing_amount')||'').trim();
  if(amountText&&(!/^\d+(?:\.\d{1,2})?$/.test(amountText)||Number(amountText)<=0||Number(amountText)>9999999999.99))
-   return notify('Final billing amount must be a positive amount in rupees with up to two decimals');
+   return measurementSaveFailure('Final billing amount must be positive with up to two decimals');
  const payload={
  customer_phone:f.get('customer_phone'),
  customer_id:f.get('customer_id')||null,
@@ -1533,7 +1535,11 @@ on('measurementForm','submit',async e=>{
  deliver_dupatta:f.has('deliver_dupatta'),
  values,remarks:f.get('remarks')||'',fitting_notes:f.get('fitting_notes')||''
  };
- const saveButton=$('saveSlipBtn');if(saveButton)saveButton.disabled=true;
+ const saveButton=$('saveSlipBtn');
+ if(saveButton)saveButton.dataset.originalText=saveButton.textContent;
+ measurementSaving=true;
+ if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving to GALOIR…'}
+ measurementSaveFeedback('Saving your measurement securely…','info');
  try{
   const {data,error:e1}=await sb.rpc('save_measurement_draft',{p_payload:payload,p_measurement_id:editingDraftId||null});
   if(e1)throw e1;
@@ -1542,10 +1548,28 @@ on('measurementForm','submit',async e=>{
   if(recordedAudio?.size){try{await uploadMedia(data.measurement_id,'voice',recordedAudio)}catch(x){warning.push('Voice: '+x.message)}}
   if(video?.size){try{await uploadMedia(data.measurement_id,'video',video)}catch(x){warning.push('Video: '+x.message)}}
   recordedAudio=null;editingDraftId=data.measurement_id;
-  await refresh();
+  clearMeasurementRecovery();
+  measurementSaving=false;
+  try{await refresh()}
+  catch(reloadError){
+   console.warn('Slip was saved, but could not reload the list yet:',reloadError);
+   if($('slipNoDisplay'))$('slipNoDisplay').textContent=data.slip_no;
+  }
   $('slipNoBanner')?.scrollIntoView({behavior:'smooth',block:'start'});
-  notify('Slip '+data.slip_no+' saved. The GL number is displayed above.'+(warning.length?' Attachment issue: '+warning.join('; '):'')+' Complete billing before printing.');
- }catch(err){error(err)}finally{if($('saveSlipBtn'))$('saveSlipBtn').disabled=false}
+  measurementSaveFeedback('Saved successfully as '+data.slip_no+'.','success');
+  notify('Slip '+data.slip_no+' SAVED successfully.'+(warning.length?' Attachment issue: '+warning.join('; '):'')+' Complete billing before printing.');
+ }catch(err){
+  measurementSaving=false;captureMeasurementRecovery();
+  measurementSaveFailure(err?.message||String(err));
+  console.error('Measurement save failed:',err);
+ }finally{
+  measurementSaving=false;
+  const currentButton=$('saveSlipBtn');
+  if(currentButton){
+   currentButton.disabled=false;
+   if(currentButton===saveButton&&saveButton?.dataset.originalText)currentButton.textContent=saveButton.dataset.originalText;
+  }
+ }
 });
 on('prevMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()-1,1);render()});on('nextMonth','click',()=>{month=new Date(month.getFullYear(),month.getMonth()+1,1);render()});document.querySelectorAll('[data-date]').forEach(el=>el.onclick=()=>{selectedDate=el.dataset.date;render()});
 const bookingCustomer=$('bookingCustomer'),bookingMeasurement=$('bookingMeasurement');if(bookingCustomer&&bookingMeasurement){const update=()=>{bookingMeasurement.innerHTML='<option value="">None</option>'+measurements.filter(m=>m.customer_id===bookingCustomer.value&&m.order_type===$('bookingType')?.value&&(!m.delivery_date||m.delivery_date===$('bookingDate')?.value)).map(m=>`<option value="${m.id}">${esc(m.slip_no||new Date(m.created_at).toLocaleString())}</option>`).join('')};bookingCustomer.onchange=update;if($('bookingType'))$('bookingType').onchange=()=>{update();updateOverrideVisibility('booking')};if($('bookingDate'))$('bookingDate').onchange=()=>{update();updateOverrideVisibility('booking')};update()}
