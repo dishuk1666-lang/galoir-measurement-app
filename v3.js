@@ -262,7 +262,7 @@ function manualImportView(){
  const editor=ed?`<section class="panel manual-import-editor"><div class="manual-heading"><h3>Complete Imported Slip ${esc(ed.slip_no)}</h3><button class="btn alt" type="button" id="manualCancelEdit">Close</button></div>
   <p class="muted">Original: ${esc(ed.manual_booklet_name)} / ${esc(ed.manual_slip_no)} · Bill ${esc(ed.bill_no)}. Previously billed: no new invoice.</p>
   <form id="manualEditForm">
-   <div><label>Upload / replace booklet page photo</label><input type="file" name="manual_booklet_file" accept="image/*" capture="environment"><p class="muted">Private photo, up to 15 MB.</p></div>
+   <div><label>Upload / replace booklet page photo</label><input type="file" name="manual_booklet_file" accept="image/*" capture="environment"><p class="muted">Private photo, up to 15 MB. Cover any written customer phone number before photographing; the page may appear on the tailor slip.</p></div>
    <details ${ed.needs_measurement_entry?'open':''}><summary>Digital measurements</summary>${manualMeasurementsFields(ed)}</details>
    <div class="fields"><div class="span"><label>Remarks</label><textarea name="remarks" maxlength="6000" rows="3">${esc(ed.remarks||'')}</textarea></div>
    <div class="span"><label>Fitting instructions</label><textarea name="fitting_notes" maxlength="6000" rows="3">${esc(ed.fitting_notes||'')}</textarea></div>
@@ -292,7 +292,7 @@ function manualImportView(){
       <option value="delivered">Already Delivered</option></select></div>
     <div><label>Original Total (₹, optional)</label><input name="final_billing_amount" type="number" min="0.01" step="0.01" max="9999999999.99"></div>
     <div><label>Already Paid (₹, optional)</label><input name="paid_amount" type="number" min="0" step="0.01"></div>
-    <div><label>Photograph Handwritten Page</label><input name="manual_booklet_file" type="file" accept="image/*" capture="environment"><p class="muted">Recommended · maximum 15 MB · can attach later.</p></div>
+    <div><label>Photograph Handwritten Page</label><input name="manual_booklet_file" type="file" accept="image/*" capture="environment"><p class="muted">Recommended · maximum 15 MB · can attach later. Cover any written customer phone number before photographing; the page may appear on the tailor slip.</p></div>
     <div class="span"><label>Original Remarks</label><textarea name="remarks" maxlength="6000" rows="3"></textarea></div>
     <div class="span"><label>Fitting Instructions</label><textarea name="fitting_notes" maxlength="6000" rows="2"></textarea></div>
     <div class="span"><label class="manual-check"><input type="checkbox" name="needs_measurement_entry" checked> Digital measurements to enter later</label></div>
