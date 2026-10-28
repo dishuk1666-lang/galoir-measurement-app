@@ -11,9 +11,9 @@ function maskCustomerPhone(value){
 }
 function phoneForDisplay(value){return role==='sales'?maskCustomerPhone(value):String(value||'—')}
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,manualEditingId=null,manualImportSearch='',manualLastImportedGL='',recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
-const allowed={admin:['dashboard','measurements','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
-const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',manual_import:'Manual Booklet Orders',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,manualEditingId=null,manualImportSearch='',manualLastImportedGL='',recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',slipHistoryData=null,slipHistoryFilter='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
+const allowed={admin:['dashboard','measurements','slip_history','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','slip_history','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
+const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',slip_history:'Slip History',manual_import:'Manual Booklet Orders',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
 function notify(s){$('notice').textContent=s;$('notice').classList.remove('hidden');setTimeout(()=>$('notice').classList.add('hidden'),4500)}
 function error(e){notify('Error: '+(e?.message||e));console.error(e)}
@@ -48,7 +48,7 @@ function updateCashierBalance(form){
  balance.classList.toggle('payment-invalid',invalid);
 }
 
-async function refresh(){today=dateStr(new Date());const [a,b,c,d,e]=await Promise.all([query('customers'),query('measurements'),query('orders'),query('settings'),query('salespeople')]);customers=a;measurements=b;orders=c;salespeople=e;capacity=d[0]?.daily_capacity||20;waEnabled=d[0]?.whatsapp_enabled===true;if(role==='admin')profiles=await query('profiles');if(tab==='settings'){const {data,error:queueError}=await sb.from('galoir_whatsapp_outbox').select('id,measurement_id,event_type,status,created_at,submitted_at,attempts,last_error').order('created_at',{ascending:false}).limit(60);waNotifications=queueError?[]:data||[]}render();if(waEnabled)void dispatchPendingWhatsapp()}
+async function refresh(){today=dateStr(new Date());const [a,b,c,d,e]=await Promise.all([query('customers'),query('measurements'),query('orders'),query('settings'),query('salespeople')]);customers=a;measurements=b;orders=c;salespeople=e;capacity=d[0]?.daily_capacity||20;waEnabled=d[0]?.whatsapp_enabled===true;if(role==='admin')profiles=await query('profiles');if(tab==='slip_history'){const {data,error:histErr}=await sb.rpc('get_galoir_slip_history');if(histErr)throw histErr;slipHistoryData=data}if(tab==='settings'){const {data,error:queueError}=await sb.from('galoir_whatsapp_outbox').select('id,measurement_id,event_type,status,created_at,submitted_at,attempts,last_error').order('created_at',{ascending:false}).limit(60);waNotifications=queueError?[]:data||[]}render();if(waEnabled)void dispatchPendingWhatsapp()}
 function customerName(id){return customers.find(x=>x.id===id)?.full_name||'Customer'}
 function countDate(d){return orders.filter(x=>x.delivery_date===d&&x.order_type!=='new_make').length}
 function newCount(d){return orders.filter(x=>x.delivery_date===d&&x.order_type==='new_make').length}
@@ -63,7 +63,7 @@ function render(){if(!role)return;const menu=allowed[role]||[];
     !measurements.some(m=>m.id===editingDraftId&&m.workflow_status==='draft')){
    clearMeasurementRecovery();editingDraftId=null;
    notify('This draft is no longer editable. Start a new slip if needed.');
- }if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(tab==='measurements')captureMeasurementRecovery();stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,manual_import:manualImportView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
+ }if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(tab==='measurements')captureMeasurementRecovery();stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,manual_import:manualImportView,slip_history:slipHistoryView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
 function masterRoomDate(o){
  const delivery=Date.parse(String(o.delivery_date||'')+'T00:00:00Z');
  if(!Number.isFinite(delivery))return '';
@@ -871,6 +871,37 @@ function settingsView(){
 function salespersonOptions(){return salespeople.filter(s=>s.active).slice().sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(s=>`<option value="${esc(s.full_name)}">${esc(s.full_name)}</option>`).join('')}
 function salespeopleView(){const rows=salespeople.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name));return `<div class="panel"><h3>Salespeople</h3><p class="muted">Salespeople do not need separate logins. Staff can use the common Sales account and select their own name when taking measurements.</p><form id="addSalespersonForm"><div class="fields"><div><label>Add salesperson name</label><input name="full_name" maxlength="100" required></div></div><button class="btn">Add Salesperson</button></form></div><div class="panel"><h3>Manage salesperson names</h3><table><tr><th>Name</th><th>Active</th><th>Actions</th></tr>${rows.map(s=>`<tr><td><input data-salesperson-name="${esc(s.id)}" value="${esc(s.full_name)}" maxlength="100" aria-label="Salesperson name"></td><td>${s.active?'Active':'Inactive'}</td><td><button type="button" class="btn alt" data-rename-salesperson="${esc(s.id)}">Rename</button> <button type="button" class="btn alt" data-toggle-salesperson="${esc(s.id)}">${s.active?'Deactivate':'Reactivate'}</button></td></tr>`).join('')||'<tr><td colspan="3">No salespeople yet. Add the first name above.</td></tr>'}</table><p class="muted">Deactivating a salesperson hides their name from new forms; past measurement records retain their original name.</p></div>`}
 function staffView(){return `<div class="panel"><h3>Manage existing Supabase users</h3><p class="muted">For one common Sales login, create a Supabase Authentication user, then copy its User UID and assign the Sales role here. Manage employees' individual names separately under Salespeople.</p><form id="staffForm"><div class="fields"><div><label>Full name</label><input name="full_name" required></div><div><label>Supabase Auth User UID</label><input name="user_id" required></div><div><label>Role</label><select name="role"><option value="sales">Sales</option><option value="tailoring">Tailoring</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div></div><button class="btn">Save Staff Role</button></form></div><div class="panel"><h3>Staff access</h3><table><tr><th>Name / Email</th><th>Role</th><th>Active</th><th>Action</th></tr>${profiles.map(p=>`<tr><td>${esc(p.full_name)}<br><span class="muted">${esc(p.email)}</span></td><td><select data-role="${p.id}">${['sales','tailoring','manager','admin'].map(r=>`<option value="${r}" ${p.role===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input type="checkbox" data-active="${p.id}" ${p.active?'checked':''} style="width:auto"></td><td><button class="btn alt" data-save-staff="${p.id}">Save</button></td></tr>`).join('')}</table></div>`}
+function slipHistoryRows(rows){
+ const labels={created:'Created',reused:'Reused',billed:'Billed',deleted:'Deleted Draft'};
+ return rows.map(e=>`<tr>
+ <td><b>${esc(e.slip_no)}</b></td>
+ <td><span class="slip-history-pill ${esc(e.event_type)}">${esc(labels[e.event_type]||e.event_type)}</span></td>
+ <td>${esc(e.customer_name||'—')}</td><td>${esc(e.bill_no||e.workflow_status||'—')}</td>
+ <td>${esc(e.performed_by||'—')}</td>
+ <td>${esc(e.happened_at?new Date(e.happened_at).toLocaleString('en-IN'):'—')}</td>
+ </tr>`).join('')||'<tr><td colspan="6" class="muted">No matching slip history records.</td></tr>';
+}
+function slipHistoryView(){
+ if(!canImportManual())return '<p class="muted">Admin / Manager access required.</p>';
+ const events=slipHistoryData?.events||[];
+ const q=slipHistoryFilter.trim().toLowerCase();
+ const rows=events.filter(e=>!q||[e.slip_no,e.event_type,e.customer_name,e.performed_by,e.bill_no,e.workflow_status].some(v=>String(v||'').toLowerCase().includes(q)));
+ return `<section class="panel">
+ <div class="slip-history-heading"><div><h3>GL Slip Number History</h3><p class="muted">Created, billed, deleted and reused numbers. Deleted unbilled draft numbers are assigned again to the next saved slip. Billed slip numbers are never recycled.</p></div>
+ <button id="reloadSlipHistory" type="button" class="btn alt">Refresh History</button></div>
+ <div class="slip-history-stats">
+ <div class="card"><span>Next slip to allocate</span><strong>${esc(slipHistoryData?.next_number||'—')}</strong></div>
+ <div class="card"><span>Deleted draft numbers available</span><strong>${esc(slipHistoryData?.available_count??0)}</strong></div>
+ <div class="card"><span>Recent events</span><strong>${events.length}</strong></div>
+ </div>
+ <label for="slipHistorySearch">Search by GL number, customer, bill or event</label>
+ <input type="search" id="slipHistorySearch" value="${esc(slipHistoryFilter)}" placeholder="e.g. GL2002 or Deleted">
+ <div class="table-scroll"><table class="slip-history-table">
+ <thead><tr><th>GL Slip</th><th>Event</th><th>Customer</th><th>Bill / Status</th><th>Staff</th><th>Date & Time</th></tr></thead>
+ <tbody id="slipHistoryRows">${slipHistoryRows(rows)}</tbody></table></div>
+ <p class="muted">The 500 most recent events are displayed. Historic deletion records may appear, but only drafts deleted after this feature was added can be reassigned.</p>
+ </section>`;
+}
 function reportsView(){return `<div class="grid">${[['Total customers',customers.length],['Total orders',orders.length],['Delivered',orders.filter(o=>o.status==='delivered').length],['Open',orders.filter(o=>o.status!=='delivered').length]].map(x=>`<div class="card"><div class="muted">${x[0]}</div><div class="stat">${x[1]}</div></div>`).join('')}</div>`}
 async function staffCall(payload){const p=payload.action==='update'?profiles.find(x=>x.id===payload.id):null;const {error:e}=await sb.rpc('admin_set_staff',{p_user_id:payload.action==='update'?payload.id:payload.user_id,p_role:payload.role,p_full_name:p?p.full_name:payload.full_name,p_active:payload.action==='update'?payload.active:true});if(e)throw e;return {ok:true}}
 async function deleteUnbilledDraft(m){
@@ -896,7 +927,7 @@ async function deleteUnbilledDraft(m){
   if(deleteError)throw deleteError;
   if(editingDraftId===m.id)editingDraftId=null;
   await refresh();
-  notify('Deleted unbilled measurement slip '+(deletedSlip||m.slip_no));
+  notify('Deleted '+(deletedSlip||m.slip_no)+'. Its GL number is available for the next saved slip; recorded in Slip History.');
  }catch(e){error(e)}
 }
 function bindSharedActions(){document.querySelectorAll('[data-ready-id]').forEach(el=>el.onchange=async()=>{const checked=el.checked;try{const {error:e}=await sb.rpc('set_order_ready',{p_order_id:el.dataset.readyId,p_ready:checked});if(e)throw e;notify(checked?'Outfit marked READY':'Outfit marked NOT READY');await refresh()}catch(x){el.checked=!checked;error(x)}});document.querySelectorAll('[data-supplier-id]').forEach(el=>el.onclick=async()=>{const o=orders.find(x=>x.id===el.dataset.supplierId);try{const {error:e}=await sb.rpc('set_supplier_informed',{p_order_id:el.dataset.supplierId,p_informed:!o?.supplier_notified_at});if(e)throw e;notify(o?.supplier_notified_at?'Supplier follow-up reopened':'Supplier informed');await refresh()}catch(x){error(x)}});document.querySelectorAll('[data-print]').forEach(el=>el.onclick=()=>{const m=measurements.find(x=>x.id===el.dataset.print);if(m)printSlip(m).catch(error)});document.querySelectorAll('[data-media]').forEach(el=>el.onclick=()=>{const m=measurements.find(x=>x.id===el.dataset.media);if(m)openPrivateMedia(m,el.dataset.kind)});
@@ -1382,7 +1413,7 @@ async function startReadyCamera(){
   if(status)status.textContent='Camera scanner unavailable: '+(e.message||e)+'. Use a handheld barcode scanner or type the GL number.';
  }
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();on('reloadSlipHistory','click',async()=>{try{const {data,error:e}=await sb.rpc('get_galoir_slip_history');if(e)throw e;slipHistoryData=data;render()}catch(e){error(e)}});on('slipHistorySearch','input',e=>{slipHistoryFilter=e.target.value;const q=slipHistoryFilter.trim().toLowerCase();const rows=(slipHistoryData?.events||[]).filter(x=>!q||[x.slip_no,x.event_type,x.customer_name,x.performed_by,x.bill_no,x.workflow_status].some(v=>String(v||'').toLowerCase().includes(q)));if($('slipHistoryRows'))$('slipHistoryRows').innerHTML=slipHistoryRows(rows)});bindColoredCalendars();bindPreparationWarnings();
  on('manualImportForm','submit',e=>{submitManualImport(e).catch(error)});
  on('manualEditForm','submit',e=>{submitManualEdit(e).catch(error)});
  on('manualCancelEdit','click',()=>{manualEditingId=null;render()});
