@@ -244,4 +244,46 @@
 .dashboard-new-measurement{display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:15px;font-weight:750;min-height:48px;padding:11px 20px;box-shadow:0 2px 7px rgba(41,37,33,.12)}
 .dashboard-plus-icon{display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;border:2px solid currentColor;border-radius:50%;font-size:22px;font-weight:650;line-height:1}
 @media(max-width:700px){.dashboard-top-actions{justify-content:stretch}.dashboard-new-measurement{width:100%;font-size:16px}}
+
+/* Migrating historic handwritten orders into live GL slips; Admin / Manager only */
+.dashboard-top-actions{flex-wrap:wrap;gap:10px}
+.dashboard-manual-action{display:flex;justify-content:flex-end;margin:-7px 0 16px}
+.dashboard-manual-action .btn{min-height:44px;padding:10px 18px}
+.manual-overview{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.manual-overview .card{margin:0;min-width:0;text-align:center;padding:14px 10px}
+.manual-overview b{display:block;font-size:28px;font-weight:850;line-height:1.2;margin-bottom:5px}
+.manual-overview small{display:block;font-size:12px;line-height:1.4;color:#766d62}
+.manual-import-success{padding:12px 16px;margin-bottom:15px;background:#eaf7ea;border:1px solid #7cb590;border-radius:10px;color:#1e6436;font-weight:750}
+.manual-import-new .fields,.manual-import-editor .fields{align-items:start}
+.manual-import-new details,.manual-import-editor details{margin:18px 0;padding:13px;border:1px solid #ded5c9;border-radius:10px;background:#faf9f7}
+.manual-import-new details>summary,.manual-import-editor details>summary{font-weight:750;cursor:pointer;padding:5px}
+.manual-measure-group{padding-top:12px}
+.manual-measure-group h4{margin:8px 0 14px;padding:8px 10px;background:#ebe7df;border-radius:6px;font-size:14px}
+.manual-check{display:flex;align-items:flex-start;gap:10px;font-size:14px;font-weight:700;line-height:1.45}
+.manual-check input{width:20px!important;height:20px;min-width:20px;min-height:20px;margin:1px 0 0;accent-color:#286e4b}
+.manual-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.manual-heading h3{margin:0}
+.manual-heading label{font-size:13px;font-weight:700;flex:1 1 260px;max-width:420px}
+.manual-heading input{height:44px;min-height:44px;max-height:44px;font-size:16px}
+.manual-import-row{display:flex;justify-content:space-between;gap:15px;align-items:center;border-top:1px solid #e5ded4;padding:14px 4px;min-width:0}
+.manual-import-row-details{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;font-size:13px}
+.manual-import-row-details>strong{font-size:16px;overflow-wrap:anywhere}
+.manual-import-row-details>span{overflow-wrap:anywhere}
+.manual-import-row-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;max-width:330px}
+.manual-import-row-actions .btn{font-size:12px;padding:9px 11px}
+.manual-badge{display:inline-block;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700}
+.manual-badge.warning{background:#fff1d6;color:#8c5b12}
+.manual-badge.done{background:#dff3e5;color:#26663e}
+@media(max-width:1150px){.manual-overview{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){
+ .dashboard-top-actions{flex-direction:column;align-items:stretch}
+ .dashboard-manual-action{justify-content:stretch}
+ .dashboard-manual-action .btn{width:100%}
+ .manual-overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .manual-import-row{flex-direction:column;align-items:stretch}
+ .manual-import-row-actions{max-width:none;justify-content:stretch}
+ .manual-import-row-actions .btn{flex:1 1 100%}
+ .manual-heading{align-items:stretch;flex-direction:column}
+ .manual-heading label{max-width:none;flex:none}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
