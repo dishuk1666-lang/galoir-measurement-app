@@ -1464,8 +1464,8 @@ on('cancelDraftEdit','click',()=>{
   measurementForm.addEventListener('change',scheduleMeasurementRecovery);
   measurementForm.addEventListener('invalid',e=>{
    const label=e.target?.closest?.('div')?.querySelector?.('label')?.textContent?.trim()||e.target?.name||'required field';
-   measurementSaveFailure('Please complete '+label);
    captureMeasurementRecovery();
+   measurementSaveFailure('Please complete '+label);
   },true);
  }
  updatePhoneLookup();restoreMeasurementRecovery();on('stopVoice','click',()=>{if(activeRecorder?.state==='recording')activeRecorder.stop()});updateOverrideVisibility('slip');updateOverrideVisibility('booking');
