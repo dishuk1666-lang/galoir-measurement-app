@@ -321,6 +321,100 @@ async function openManualBookletPhoto(m){
   if(win)win.location.href=data.signedUrl;else notify('Enable pop-ups to view the booklet photo');
  }catch(e){win?.close();error(e)}
 }
+function collectManualFields(form,includeBlanks=false){
+ const fd=new FormData(form),values={};
+ for(const [group,names] of Object.entries(measureGroups))
+  for(const name of names){
+   const key=group+' / '+name;
+   const value=String(fd.get('m_'+key)??'').trim();
+   if(value||includeBlanks)values[key]=value;
+  }
+ return values;
+}
+async function submitManualImport(e){
+ e.preventDefault();
+ if(!canImportManual())return notify('Admin or Manager access required');
+ const form=e.target,f=new FormData(form);
+ const photo=f.get('manual_booklet_file');
+ const booklet=String(f.get('manual_booklet_name')||'').trim();
+ const originalSlip=String(f.get('manual_slip_no')||'').trim();
+ const bill=String(f.get('bill_no')||'').trim();
+ const phone=String(f.get('customer_phone')||'').trim();
+ const originalDate=String(f.get('order_date')||'');
+ const deliveryDate=String(f.get('delivery_date')||'');
+ const orderType=String(f.get('order_type')||'self_alter');
+ const status=String(f.get('current_status')||'pending');
+ if(!booklet||!originalSlip||!bill)throw Error('Enter booklet name, old slip and existing POS bill');
+ if(phoneDigits(phone).length<7)throw Error('Enter a complete customer phone number');
+ if(originalDate>today)throw Error('Original order date cannot be in the future');
+ if(!deliveryDate||deliveryDate<originalDate)throw Error('Enter the original promised delivery date');
+ if(status==='sent_master'&&orderType!=='self_alter')throw Error('Master Room status is for Self Alter only');
+ const values=collectManualFields(form);
+ if(!f.has('needs_measurement_entry')&&!Object.values(values).some(Boolean))
+  throw Error('Enter digital measurements or tick Enter later');
+ const total=String(f.get('final_billing_amount')||'').trim();
+ const paid=String(f.get('paid_amount')||'').trim();
+ if(paid&&!total)throw Error('Enter original total before entering paid amount');
+ if(total&&(!/^\d+(?:\.\d{1,2})?$/.test(total)||Number(total)<=0))throw Error('Invalid original total');
+ if(paid&&(!/^\d+(?:\.\d{1,2})?$/.test(paid)||Number(paid)>Number(total)))throw Error('Paid amount cannot exceed total');
+ if(photo instanceof File&&photo.size>15728640)throw Error('Booklet photo must be 15 MB or smaller');
+ const payload={
+  manual_booklet_name:booklet,manual_slip_no:originalSlip,bill_no:bill,
+  customer_name:String(f.get('customer_name')||'').trim(),
+  customer_phone:phone,salesperson_name:f.get('salesperson_name')||'',
+  order_date:originalDate,delivery_date:deliveryDate,order_type:orderType,
+  current_status:status,days_required:Number(f.get('days_required')||3),
+  final_billing_amount:total||null,paid_amount:paid||null,
+  whatsapp_opt_in:f.has('whatsapp_opt_in'),needs_measurement_entry:f.has('needs_measurement_entry'),
+  remarks:f.get('remarks')||'',fitting_notes:f.get('fitting_notes')||'',values
+ };
+ const submit=form.querySelector('button[type="submit"]');
+ if(submit)submit.disabled=true;
+ try{
+  const {data,error:e}=await sb.rpc('import_manual_booklet_order',{p_payload:payload});
+  if(e)throw e;
+  let warning='';
+  if(photo instanceof File&&photo.size){
+   try{await uploadManualBookletPhoto(data.measurement_id,photo)}
+   catch(err){warning=' Booklet photo upload failed: '+(err.message||err)+'. Reopen this imported order to retry.'}
+  }
+  manualLastImportedGL=data.slip_no;
+  manualEditingId=null;
+  await refresh();
+  notify('Manual slip '+originalSlip+' imported as '+data.slip_no+'. Existing bill retained; no new billing.'+warning);
+ }finally{if(submit?.isConnected)submit.disabled=false}
+}
+async function submitManualEdit(e){
+ e.preventDefault();
+ if(!canImportManual())return notify('Admin or Manager access required');
+ const form=e.target,id=manualEditingId;
+ const m=measurements.find(x=>x.id===id&&x.imported_from_manual);
+ if(!m)throw Error('Imported slip not found');
+ const values=collectManualFields(form,true);
+ const f=new FormData(form);
+ if(!f.has('needs_measurement_entry')&&!Object.values(values).some(Boolean))
+  throw Error('Enter measurements before marking transcription complete');
+ const photo=f.get('manual_booklet_file');
+ if(photo instanceof File&&photo.size>15728640)throw Error('Photo cannot exceed 15 MB');
+ const button=form.querySelector('button[type="submit"]');
+ if(button)button.disabled=true;
+ try{
+  const {error:e}=await sb.rpc('update_imported_measurements',{
+   p_measurement_id:id,p_values:values,p_remarks:f.get('remarks')||'',
+   p_fitting_notes:f.get('fitting_notes')||'',
+   p_needs_measurement_entry:f.has('needs_measurement_entry')
+  });
+  if(e)throw e;
+  let warning='';
+  if(photo instanceof File&&photo.size){
+   try{await uploadManualBookletPhoto(id,photo)}
+   catch(err){warning=' Booklet photo failed: '+(err.message||err)}
+  }
+  manualEditingId=null;
+  await refresh();
+  notify('Imported '+m.slip_no+' updated.'+warning);
+ }finally{if(button?.isConnected)button.disabled=false}
+}
 function dashboardView(){
  const due=deliveriesToday(),master=masterRoomToday();
  const delivered=due.filter(o=>o.status==='delivered').length;
@@ -1193,6 +1287,29 @@ async function startReadyCamera(){
  }
 }
 function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();
+ on('manualImportForm','submit',e=>{submitManualImport(e).catch(error)});
+ on('manualEditForm','submit',e=>{submitManualEdit(e).catch(error)});
+ on('manualCancelEdit','click',()=>{manualEditingId=null;render()});
+ on('manualImportPhone','input',e=>{
+  const v=e.target.value,matches=phoneMatches(v),status=$('manualImportPhoneStatus'),name=$('manualImportCustomerName');
+  if(status)status.textContent=matches.length===1?'Existing customer: '+matches[0].full_name:
+   matches.length>1?'Multiple matching customers — resolve duplicates first':
+   phoneDigits(v).length>=7?'New phone: enter customer name':'Existing customers are matched automatically';
+  if(name&&matches.length===1&&!name.value)name.value=matches[0].full_name;
+ });
+ on('manualImportSearch','input',e=>{manualImportSearch=e.target.value;if($('manualImportRows'))$('manualImportRows').innerHTML=manualImportRows()});
+ document.querySelectorAll('[data-manual-edit]').forEach(el=>el.onclick=()=>{
+  if(!canImportManual())return;manualEditingId=el.dataset.manualEdit;tab='manual_import';render();
+  $('manualEditor')?.scrollIntoView({behavior:'smooth',block:'start'});
+ });
+ document.querySelectorAll('[data-manual-photo]').forEach(el=>el.onclick=()=>{
+  const m=measurements.find(x=>x.id===el.dataset.manualPhoto);
+  if(m)openManualBookletPhoto(m);
+ });
+ document.querySelectorAll('[data-manual-print]').forEach(el=>el.onclick=()=>{
+  const m=measurements.find(x=>x.id===el.dataset.manualPrint);
+  if(m)printSlip(m).catch(error);
+ });
  on('dashboardImportManual','click',()=>{if(!canImportManual())return;manualEditingId=null;tab='manual_import';render();window.scrollTo?.({top:0,behavior:'smooth'})});
  on('dashboardNewMeasurement','click',()=>{
   if(!can('measurements'))return notify('Your account cannot create measurement slips');
