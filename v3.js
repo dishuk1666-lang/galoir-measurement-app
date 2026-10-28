@@ -281,7 +281,7 @@ function manualImportView(){
     <div><label>Customer Phone Number *</label><input required maxlength="30" type="tel" id="manualImportPhone" name="customer_phone"><p class="muted" id="manualImportPhoneStatus">Existing customers matched automatically.</p></div>
     <div><label>Customer Name (if new)</label><input maxlength="120" id="manualImportCustomerName" name="customer_name"></div>
     <div><label>Original Salesperson</label><input list="manualSalespeople" maxlength="120" name="salesperson_name"><datalist id="manualSalespeople">${salespeople.map(x=>`<option value="${esc(x.full_name)}"></option>`).join('')}</datalist></div>
-    <div><label>Original Order Date *</label><input required name="order_date" type="date" max="${esc(today)}" value="${esc(today)}"></div>
+    <div><label>Original Order Date *</label><input required name="order_date" type="date" max="${esc(today)}" placeholder="Choose original date"></div>
     <div><label>Original Promised Delivery Date *</label><input required name="delivery_date" type="date"><p class="muted">Past dates are allowed and show as overdue.</p></div>
     <div><label>Order Type</label><select name="order_type"><option value="self_alter">Self Alter</option><option value="new_make">New Make</option></select></div>
     <div><label>Days Needed to Prepare</label><input required name="days_required" type="number" min="0" max="60" value="3"></div>
@@ -1311,17 +1311,18 @@ function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListene
   if(name&&matches.length===1&&!name.value)name.value=matches[0].full_name;
  });
  on('manualImportSearch','input',e=>{manualImportSearch=e.target.value;if($('manualImportRows'))$('manualImportRows').innerHTML=manualImportRows()});
- document.querySelectorAll('[data-manual-edit]').forEach(el=>el.onclick=()=>{
-  if(!canImportManual())return;manualEditingId=el.dataset.manualEdit;tab='manual_import';render();
-  $('manualEditor')?.scrollIntoView({behavior:'smooth',block:'start'});
- });
- document.querySelectorAll('[data-manual-photo]').forEach(el=>el.onclick=()=>{
-  const m=measurements.find(x=>x.id===el.dataset.manualPhoto);
-  if(m)openManualBookletPhoto(m);
- });
- document.querySelectorAll('[data-manual-print]').forEach(el=>el.onclick=()=>{
-  const m=measurements.find(x=>x.id===el.dataset.manualPrint);
-  if(m)printSlip(m).catch(error);
+ // Delegate to the results container: filtering replaces row nodes without losing actions.
+ on('manualImportRows','click',e=>{
+  const el=e.target?.closest?.('[data-manual-edit],[data-manual-photo],[data-manual-print]');
+  if(!el||!canImportManual())return;
+  const id=el.dataset.manualEdit||el.dataset.manualPhoto||el.dataset.manualPrint;
+  const m=measurements.find(x=>x.id===id&&x.imported_from_manual);
+  if(!m)return notify('Imported slip not found');
+  if(el.hasAttribute('data-manual-edit')){
+    manualEditingId=m.id;tab='manual_import';render();
+    $('manualEditor')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }else if(el.hasAttribute('data-manual-photo'))openManualBookletPhoto(m);
+  else printSlip(m).catch(error);
  });
  on('dashboardImportManual','click',()=>{if(!canImportManual())return;manualEditingId=null;tab='manual_import';render();window.scrollTo?.({top:0,behavior:'smooth'})});
  on('dashboardNewMeasurement','click',()=>{
