@@ -763,7 +763,7 @@ async function printSlip(m){
       html,body{margin:0;padding:0;background:#ececec;color:#171717;font-family:Arial,Helvetica,sans-serif}
       .print-toolbar{padding:13px;text-align:center}
       .print-toolbar button{border:0;border-radius:7px;padding:11px 24px;background:#25211e;color:#fff;font-size:15px;cursor:pointer}
-      #printPage{width:190mm;height:265mm;overflow:hidden;background:#fff;margin:0 auto 12px;box-shadow:0 2px 18px #0002;break-inside:avoid;page-break-inside:avoid}
+      #printPage{width:190mm;height:265mm;overflow:hidden;background:#fff;margin:0 auto 12px;box-shadow:0 2px 18px #0002}
       #printSheet{width:190mm;min-height:265mm;height:auto;display:flex;flex-direction:column;gap:6px;padding:0 1mm;
         font-size:14px;line-height:1.22;transform-origin:top left;overflow:visible}
       .slip-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
@@ -826,20 +826,27 @@ async function printSlip(m){
       .compact-print .reference-photo{max-width:208px;max-height:184px}
       @page{size:A4 portrait;margin:8mm}
       @media print{
-        /* iPadOS and printer rounding can paginate a nearly full A4 box.
-           Keep headroom and prevent content from flowing into a second sheet. */
-        html,body{width:190mm!important;height:265mm!important;max-height:265mm!important;
-          margin:0!important;padding:0!important;overflow:hidden!important;background:#fff!important}
+        /* iPadOS Safari: never put a full-page 'break-inside:avoid' element in
+           normal print flow. Safari may move that element to a second page,
+           leaving the first page blank even when the content visually fits.
+           An absolutely positioned print surface has no pagination footprint. */
+        html,body{width:190mm!important;height:0!important;min-height:0!important;
+          max-height:0!important;margin:0!important;padding:0!important;
+          overflow:visible!important;background:#fff!important}
+        body{display:block!important;position:relative!important;
+          -webkit-print-color-adjust:exact;print-color-adjust:exact}
         .print-toolbar{display:none!important}
-        #printPage{display:block!important;position:relative!important;
+        #printPage{display:block!important;position:absolute!important;top:0!important;left:0!important;
           width:190mm!important;height:265mm!important;max-height:265mm!important;
-          margin:0!important;padding:0!important;box-shadow:none!important;
-          overflow:hidden!important;break-inside:avoid!important;page-break-inside:avoid!important;
-          break-after:avoid!important;page-break-after:avoid!important}
+          margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;
+          overflow:hidden!important;transform:none!important;
+          break-before:auto!important;page-break-before:auto!important;
+          break-inside:auto!important;page-break-inside:auto!important;
+          break-after:auto!important;page-break-after:auto!important}
         #printSheet{width:190mm!important;height:auto!important;min-height:0!important;
           max-width:190mm!important;margin:0!important;overflow:visible!important;
-          break-inside:avoid!important;page-break-inside:avoid!important}
-        body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+          break-inside:auto!important;page-break-inside:auto!important}
+        .measure-section{break-inside:auto!important;page-break-inside:auto!important}
       }
     </style></head><body>
     <div class="print-toolbar"><button type="button" id="printNow">Print A4 Tailor Slip</button><p id="photoLoadWarning" class="photo-load-warning" hidden></p></div>
