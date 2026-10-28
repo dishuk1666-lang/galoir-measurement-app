@@ -121,7 +121,7 @@ function computeOutfitStatus(order){
 }
 function statusLookupResults(query){
  const raw=String(query||'').trim();
- if(!raw)return '<p class="muted">Enter a customer phone number, GL slip number, or bill number to check its status.</p>';
+ if(!raw)return '<p class="muted">Enter a phone, GL slip, old manual slip or bill number to check its status.</p>';
  const slip=raw.toUpperCase().replace(/[\s-]/g,'');
  const isSlip=/^GL\d{1,16}$/.test(slip);
  const isPhone=/^[+()\d\s-]+$/.test(raw)&&/^\d{7,15}$/.test(raw.replace(/\D/g,''));
@@ -132,6 +132,9 @@ function statusLookupResults(query){
  const foundMeasurements=measurements.filter(m=>
   (isSlip&&String(m.slip_no||'').toUpperCase()===slip)||
   (String(m.bill_no||'').trim()!==''&&String(m.bill_no).trim().toLowerCase()===billLookup)||
+  (m.imported_from_manual&&(
+    String(m.manual_slip_no||'').trim().toLowerCase()===billLookup||
+    (String(m.manual_booklet_name||'').trim()+'/'+String(m.manual_slip_no||'').trim()).toLowerCase()===billLookup))||
   custIds.has(m.customer_id));
  const slipIds=new Set(foundMeasurements.map(m=>m.id));
  const foundOrders=orders.filter(o=>slipIds.has(o.measurement_id)||custIds.has(o.customer_id));
@@ -155,6 +158,8 @@ function statusLookupResults(query){
     <div><span>Customer</span><strong>${esc(c?.full_name||'Customer')}</strong></div>
     <div><span>Phone</span><strong>${esc(phoneForDisplay(c?.phone))}</strong></div>
     <div><span>Bill Number</span><strong>${esc(m?.bill_no||'Pending Billing')}</strong></div>
+    ${m?.imported_from_manual?`<div><span>Old Manual Slip</span><strong>${esc(m.manual_slip_no||'—')}</strong></div>
+     <div><span>Booklet</span><strong>${esc(m.manual_booklet_name||'—')}</strong></div>`:''}
     <div><span>Outfit</span><strong>${esc(o?.item_name||m?.item_name||'—')}</strong></div>
     <div><span>Order Type</span><strong>${makeType==='new_make'?'New Make':'Self Alter'}</strong></div>
     <div><span>Expected Delivery</span><strong>${esc(expectation)}</strong></div>
@@ -163,6 +168,7 @@ function statusLookupResults(query){
    ${m?`<div class="status-result-actions">
     <button type="button" class="btn alt" data-status-view="${esc(m.id)}">View Measurements</button>
     ${m.photo_path?`<button type="button" class="btn alt" data-status-photo="${esc(m.id)}">View Photo</button>`:''}
+    ${m.manual_booklet_photo_path?`<button type="button" class="btn alt" data-status-booklet="${esc(m.id)}">View Booklet Page</button>`:''}
     ${m.workflow_status==='billed'&&m.bill_no?`<button type="button" class="btn" data-status-print="${esc(m.id)}">View / Print A4 Slip</button>`:''}
    </div>`:'<p class="muted">No measurement slip is linked to this booking.</p>'}
   </article>`;
@@ -182,6 +188,7 @@ function statusSlipPreviewHtml(m){
   ['Salesperson',m.salesperson_name||'—'],['Delivery Date',m.delivery_date?outputDate(m.delivery_date):'Not booked'],
   ['Bill Number',m.bill_no||'Pending'],['Design Number',m.design_number||'—'],
   ['Product Barcode',m.product_barcode||'—'],['Preparation Days',m.days_required??'—'],
+  ...(m.imported_from_manual?[['Old Manual Slip',m.manual_slip_no||'—'],['Booklet',m.manual_booklet_name||'—']]:[]),
   ['Company',m.company_name||'—'],['Reviewed By',m.reviewed_by||'—'],
   ['Size Basis',m.ready_body||'—']
  ];
@@ -206,6 +213,7 @@ function statusSlipPreviewHtml(m){
  </section>
  <p class="muted">Items to deliver: ${esc(deliver.length?deliver.join(', '):'Not specified')}</p>
  ${m.photo_path?'<p class="muted">Reference photo attached — use View Photo in the search result.</p>':''}
+ ${m.manual_booklet_photo_path?'<p class="muted">Original handwritten booklet page attached — use View Booklet Page in the search result.</p>':''}
  <p class="muted">${billed?'Open View / Print A4 Slip from the search result for the official tailor printout.':'The cashier must finish billing before this slip can be printed.'}</p>`;
 }
 function manualMeasurementsFields(m=null){
@@ -424,9 +432,9 @@ function dashboardView(){
  ${canImportManual()?`<div class="dashboard-manual-action"><button type="button" class="btn alt" id="dashboardImportManual">📖 + Import Manual Order</button></div>`:''}
  <section class="panel status-lookup-panel">
   <h3>Search Customer / Slip / Bill Status</h3>
-  <p class="muted">Enter a customer phone number, GL slip number, or exact bill number to check whether the outfit is ready, sent to the master room, or not yet due.</p>
+  <p class="muted">Enter a customer phone, GL slip, old manual slip number, or exact bill number to see its status and expected delivery.</p>
   <form id="statusSearchForm" role="search" class="status-search-form" autocomplete="off">
-   <input type="search" id="statusSearchInput" maxlength="100" value="${esc(statusSearchQuery)}" placeholder="Phone, GL2001 or Bill No." aria-label="Search by customer phone, GL slip number or bill number">
+   <input type="search" id="statusSearchInput" maxlength="100" value="${esc(statusSearchQuery)}" placeholder="Phone, GL, Old Slip or Bill" aria-label="Search by phone, GL slip, manual slip or bill number">
    <button class="btn" type="submit">Search Status</button>
    <button class="btn alt" type="button" id="statusSearchClear">Clear</button>
   </form>
@@ -687,7 +695,9 @@ function measurementTable(rows){
   const c=customers.find(x=>x.id===m.customer_id);
   const isBilled=m.workflow_status==='billed'&&Boolean(m.bill_no);
   const deletable=role==='admin'&&m.workflow_status==='draft'&&!String(m.bill_no||'').trim()&&!orders.some(o=>o.measurement_id===m.id);
-  return `<tr><td><strong>${esc(m.slip_no||'—')}</strong><br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(phoneForDisplay(c?.phone))}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
+  return `<tr><td><strong>${esc(m.slip_no||'—')}</strong>
+    ${m.imported_from_manual?`<br><small class="muted">Manual ${esc(m.manual_booklet_name)} / ${esc(m.manual_slip_no)}</small>`:''}
+    <br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(phoneForDisplay(c?.phone))}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
   ${deletable?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Draft</button>`:''}
   ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}${m.video_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="video">Video</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
  }).join('')}</table>`;
@@ -925,9 +935,11 @@ async function printSlip(m){
   try{
     const customer=customers.find(x=>x.id===m.customer_id);
     const order=orders.find(x=>x.measurement_id===m.id);
+    const printPhotoPath=m.photo_path||m.manual_booklet_photo_path;
+    const photoIsBooklet=!m.photo_path&&!!m.manual_booklet_photo_path;
     let photoURL='';
-    if(m.photo_path){
-      const {data,error:photoSignError}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.photo_path,900);
+    if(printPhotoPath){
+      const {data,error:photoSignError}=await sb.storage.from('galoir-measurement-media').createSignedUrl(printPhotoPath,900);
       if(photoSignError||!data?.signedUrl)throw new Error('Reference photo could not be accessed. Reopen the slip and retry printing.');
       photoURL=data.signedUrl;
     }
@@ -943,7 +955,8 @@ async function printSlip(m){
       ['Order Date',outputDate(m.order_date)],['Order Type',m.order_type==='new_make'?'New Make':'Self Alter'],
       ['Outfit',m.item_name],['Company',m.company_name],
       ['Reviewed By',m.reviewed_by],['Size Basis',m.ready_body],
-      ['Preparation Days',m.days_required],['CRM Ready',order?.is_ready?'Yes':'No'],['Deliver',deliver]
+      ['Preparation Days',m.days_required],['CRM Ready',order?.is_ready?'Yes':'No'],['Deliver',deliver],
+       ...(m.imported_from_manual?[['Old Manual Slip',m.manual_slip_no],['Booklet',m.manual_booklet_name]]:[])
     ];
     // Two clean print columns. Read down the left column, then down the right.
     // Only the print layout is reordered: stored measurement keys never change.
@@ -1080,7 +1093,7 @@ async function printSlip(m){
       <div class="remarks-area ${photoURL?'with-photo':''}">
         <div class="remark-panel"><h3>REMARKS</h3><div class="remark-box">${esc(displayValue(m.remarks))}</div></div>
         <div class="remark-panel"><h3>FITTING INSTRUCTIONS</h3><div class="remark-box">${esc(displayValue(m.fitting_notes))}</div></div>
-        ${photoURL?`<div class="reference-panel"><h3>REFERENCE PHOTO</h3>
+        ${photoURL?`<div class="reference-panel"><h3>${photoIsBooklet?'MANUAL BOOKLET PHOTO':'REFERENCE PHOTO'}</h3>
           <div class="reference-image-box"><img class="reference-photo" id="refPhoto" src="${esc(photoURL)}" alt="Outfit reference photo"></div>
         </div>`:''}
       </div>
@@ -1325,12 +1338,15 @@ function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListene
  on('statusSearchClear','click',()=>{statusSearchQuery='';if($('statusSearchInput')){$('statusSearchInput').value='';$('statusSearchInput').focus()}if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults('')});
  // Delegated handler survives a fresh search that replaces result cards.
  on('statusSearchResults','click',e=>{
-  const el=e.target?.closest?.('[data-status-photo], [data-status-view], [data-status-print]');
+  const el=e.target?.closest?.('[data-status-photo], [data-status-booklet], [data-status-view], [data-status-print]');
   if(!el)return;
-  const id=el.dataset.statusPhoto||el.dataset.statusView||el.dataset.statusPrint;
+  const id=el.dataset.statusPhoto||el.dataset.statusBooklet||el.dataset.statusView||el.dataset.statusPrint;
   const m=measurements.find(x=>x.id===id);
   if(!m)return notify('Measurement slip not found. Refresh the dashboard and try again.');
-  if(el.hasAttribute('data-status-photo')){
+  if(el.hasAttribute('data-status-booklet')){
+   if(m.manual_booklet_photo_path)openManualBookletPhoto(m);
+   else notify('No original booklet photo attached.');
+  }else if(el.hasAttribute('data-status-photo')){
    if(m.photo_path)openPrivateMedia(m,'photo');
    else notify('No photo attached to this slip.');
   }else if(el.hasAttribute('data-status-print')){
