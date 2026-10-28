@@ -58,7 +58,12 @@ function supplierAlerts(){return activeOrders().filter(o=>o.order_type==='new_ma
 function alterationAlerts(){return activeOrders().filter(o=>o.order_type!=='new_make'&&daysUntil(o.delivery_date)<=Number(o.days_required??2))}
 function outputDate(d){return d?new Date(d+'T12:00:00').toLocaleDateString('en-IN'):'—'}
 const canImportManual=()=>role==='admin'||role==='manager';
-function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,manual_import:manualImportView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
+function render(){if(!role)return;const menu=allowed[role]||[];
+ if(tab==='measurements'&&editingDraftId&&measurements.length&&
+    !measurements.some(m=>m.id===editingDraftId&&m.workflow_status==='draft')){
+   clearMeasurementRecovery();editingDraftId=null;
+   notify('This draft is no longer editable. Start a new slip if needed.');
+ }if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(tab==='measurements')captureMeasurementRecovery();stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,manual_import:manualImportView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
 function masterRoomDate(o){
  const delivery=Date.parse(String(o.delivery_date||'')+'T00:00:00Z');
  if(!Number.isFinite(delivery))return '';
@@ -1405,7 +1410,8 @@ function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListene
  on('dashboardImportManual','click',()=>{if(!canImportManual())return;manualEditingId=null;tab='manual_import';render();window.scrollTo?.({top:0,behavior:'smooth'})});
  on('dashboardNewMeasurement','click',()=>{
   if(!can('measurements'))return notify('Your account cannot create measurement slips');
-  stopBarcodeScan();stopReadyCamera();
+  if(measurementDirty&&!window.confirm('Unsaved measurements exist. Discard their temporary copy and start a new slip?'))return;
+  clearMeasurementRecovery();stopBarcodeScan();stopReadyCamera();
   editingDraftId=null;
   recordedAudio=null;
   tab='measurements';
@@ -1448,8 +1454,21 @@ on('slipCustomerSelect','change',e=>refillLastMeasurements(e.target.value));
 on('forceNewCustomer','click',()=>{const input=$('forceNewCustomerValue');if(!input)return;input.value=input.value==='true'?'false':'true';updatePhoneLookup()});
 on('startBarcodeScan','click',startBarcodeScan);
 on('stopBarcodeScan','click',stopBarcodeScan);
-on('cancelDraftEdit','click',()=>{editingDraftId=null;recordedAudio=null;render()});
-updatePhoneLookup();on('stopVoice','click',()=>{if(activeRecorder?.state==='recording')activeRecorder.stop()});updateOverrideVisibility('slip');updateOverrideVisibility('booking');
+on('cancelDraftEdit','click',()=>{
+  if(measurementDirty&&!window.confirm('Discard unsaved measurements and start a new slip?'))return;
+  clearMeasurementRecovery();editingDraftId=null;recordedAudio=null;render()
+ });
+ const measurementForm=$('measurementForm');
+ if(measurementForm){
+  measurementForm.addEventListener('input',scheduleMeasurementRecovery);
+  measurementForm.addEventListener('change',scheduleMeasurementRecovery);
+  measurementForm.addEventListener('invalid',e=>{
+   const label=e.target?.closest?.('div')?.querySelector?.('label')?.textContent?.trim()||e.target?.name||'required field';
+   measurementSaveFailure('Please complete '+label);
+   captureMeasurementRecovery();
+  },true);
+ }
+ updatePhoneLookup();restoreMeasurementRecovery();on('stopVoice','click',()=>{if(activeRecorder?.state==='recording')activeRecorder.stop()});updateOverrideVisibility('slip');updateOverrideVisibility('booking');
 on('customerForm','submit',async e=>{e.preventDefault();const f=new FormData(e.target);try{const {error:x}=await sb.from('customers').insert({full_name:f.get('full_name'),phone:f.get('phone'),notes:f.get('notes'),created_by:me.id});if(x)throw x;notify('Customer saved');await refresh()}catch(x){error(x)}});
 on('searchCustomers','input',e=>{$('customerRows').innerHTML=customerTable(customers.filter(c=>(c.full_name+' '+c.phone).toLowerCase().includes(e.target.value.toLowerCase())))});
 on('searchMeasurements','input',e=>{const term=e.target.value.toLowerCase().trim();$('measurementRows').innerHTML=measurementTable(measurements.filter(m=>{const c=customers.find(x=>x.id===m.customer_id);return `${c?.full_name||''} ${c?.phone||''} ${m.fitting_notes||''} ${m.salesperson_name||''} ${m.slip_no||''} ${m.remarks||''} ${m.bill_no||''} ${m.item_name||''} ${m.product_barcode||''} ${customers.find(x=>x.id===m.customer_id)?.phone||''}`.toLowerCase().includes(term)}))});
@@ -1555,6 +1574,13 @@ document.querySelectorAll('[data-toggle-salesperson]').forEach(el=>el.onclick=as
 on('staffForm','submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await staffCall({action:'create',user_id:f.get('user_id'),full_name:f.get('full_name'),role:f.get('role')});notify('Staff role saved');await refresh()}catch(x){error(x)}});
 document.querySelectorAll('[data-save-staff]').forEach(el=>el.onclick=async()=>{const id=el.dataset.saveStaff;try{await staffCall({action:'update',id,role:document.querySelector(`[data-role="${id}"]`).value,active:document.querySelector(`[data-active="${id}"]`).checked});notify('Staff updated');await refresh()}catch(x){error(x)}})
 }
-async function loadUser(){const {data:{user}}=await sb.auth.getUser();if(!user){me=null;role=null;$('login').classList.remove('hidden');$('app').classList.add('hidden');return}const {data:p,error:e}=await sb.from('profiles').select('*').eq('id',user.id).single();if(e||!p?.active){await sb.auth.signOut({scope:'local'});notify('Account is not authorized. Contact your admin.');return loadUser()}me=user;role=p.role;$('login').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(x){error(x)}}
-document.addEventListener('visibilitychange',()=>{if(document.hidden){stopBarcodeScan();stopReadyCamera()}else if(me)refresh().catch(error)});
-$('loginForm').onsubmit=async e=>{e.preventDefault();if(!sb)return notify('Configure Supabase first');const {error:x}=await sb.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(x)return error(x);await loadUser()};$('logout').onclick=async()=>{await sb.auth.signOut({scope:'local'});loadUser()};if(!ready){$('setupWarning').textContent='Setup required: configure config.js with your Supabase Project URL and public key before signing in.'}else loadUser();
+async function loadUser(){const {data:{user}}=await sb.auth.getUser();if(!user){me=null;role=null;$('login').classList.remove('hidden');$('app').classList.add('hidden');return}const {data:p,error:e}=await sb.from('profiles').select('*').eq('id',user.id).single();if(e||!p?.active){await sb.auth.signOut({scope:'local'});notify('Account is not authorized. Contact your admin.');return loadUser()}me=user;role=p.role;prepareMeasurementRecoveryOnLogin();$('login').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(x){error(x)}}
+// Phone lock, app switching and the mobile camera can hide the document.
+ // Do not refresh an active Measurement form on unlock: replacing its HTML
+ // destroys unsaved input, camera selections and any in-progress draft.
+ document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){captureMeasurementRecovery();stopBarcodeScan();stopReadyCamera()}
+  else if(me&&tab!=='measurements')refresh().catch(error);
+ });
+ window.addEventListener('pagehide',()=>captureMeasurementRecovery());
+$('loginForm').onsubmit=async e=>{e.preventDefault();if(!sb)return notify('Configure Supabase first');const {error:x}=await sb.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(x)return error(x);await loadUser()};$('logout').onclick=async()=>{clearMeasurementRecovery();await sb.auth.signOut({scope:'local'});loadUser()};if(!ready){$('setupWarning').textContent='Setup required: configure config.js with your Supabase Project URL and public key before signing in.'}else loadUser();
