@@ -11,9 +11,9 @@ function maskCustomerPhone(value){
 }
 function phoneForDisplay(value){return role==='sales'?maskCustomerPhone(value):String(value||'—')}
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
-const allowed={admin:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
-const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,manualEditingId=null,manualImportSearch='',manualLastImportedGL='',recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
+const allowed={admin:['dashboard','measurements','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
+const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',manual_import:'Manual Booklet Orders',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
 function notify(s){$('notice').textContent=s;$('notice').classList.remove('hidden');setTimeout(()=>$('notice').classList.add('hidden'),4500)}
 function error(e){notify('Error: '+(e?.message||e));console.error(e)}
@@ -57,7 +57,8 @@ function activeOrders(){return orders.filter(o=>o.status!=='delivered'&&!o.is_re
 function supplierAlerts(){return activeOrders().filter(o=>o.order_type==='new_make'&&!o.supplier_notified_at&&daysUntil(o.delivery_date)<=2)}
 function alterationAlerts(){return activeOrders().filter(o=>o.order_type!=='new_make'&&daysUntil(o.delivery_date)<=Number(o.days_required??2))}
 function outputDate(d){return d?new Date(d+'T12:00:00').toLocaleDateString('en-IN'):'—'}
-function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
+const canImportManual=()=>role==='admin'||role==='manager';
+function render(){if(!role)return;const menu=allowed[role]||[];if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,manual_import:manualImportView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
 function masterRoomDate(o){
  const delivery=Date.parse(String(o.delivery_date||'')+'T00:00:00Z');
  if(!Number.isFinite(delivery))return '';
@@ -207,12 +208,126 @@ function statusSlipPreviewHtml(m){
  ${m.photo_path?'<p class="muted">Reference photo attached — use View Photo in the search result.</p>':''}
  <p class="muted">${billed?'Open View / Print A4 Slip from the search result for the official tailor printout.':'The cashier must finish billing before this slip can be printed.'}</p>`;
 }
+function manualMeasurementsFields(m=null){
+ return Object.entries(measureGroups).map(([group,items])=>
+ `<section class="manual-measure-group"><h4>${esc(measurementGroupDisplayName(group))}</h4><div class="fields">
+ ${items.map(name=>`<div><label>${esc(name)}</label><input name="m_${esc(group+' / '+name)}" type="text" maxlength="120" value="${esc(measurementValue(m?.values,group,name))}"></div>`).join('')}
+ </div></section>`).join('');
+}
+function manualOrderStatus(o){
+ if(!o)return 'Booking missing';
+ if(o.status==='delivered')return 'Delivered';
+ if(o.is_ready)return 'Ready for Collection';
+ if(o.master_room_sent_at)return 'Sent to Master Room';
+ if(o.status==='stitching')return 'Stitching';
+ if(o.status==='trial')return 'Trial';
+ if(o.status==='alteration')return 'Alteration';
+ if(o.delivery_date<today)return 'Overdue';
+ return 'Pending';
+}
+function manualImportRows(){
+ const q=manualImportSearch.trim().toLowerCase();
+ return measurements.filter(m=>m.imported_from_manual).filter(m=>{
+  const c=customers.find(x=>x.id===m.customer_id);
+  return !q||`${m.manual_booklet_name} ${m.manual_slip_no} ${m.slip_no} ${m.bill_no} ${c?.full_name||''} ${c?.phone||''}`.toLowerCase().includes(q);
+ }).sort((a,b)=>String(a.delivery_date||'').localeCompare(String(b.delivery_date||''))).slice(0,250).map(m=>{
+  const c=customers.find(x=>x.id===m.customer_id),o=orders.find(x=>x.measurement_id===m.id);
+  return `<article class="manual-import-row">
+    <div class="manual-import-row-details"><strong>${esc(m.slip_no)} ← ${esc(m.manual_booklet_name)} / ${esc(m.manual_slip_no)}</strong>
+     <span>${esc(c?.full_name||'Customer')} · ${esc(phoneForDisplay(c?.phone))} · Bill ${esc(m.bill_no)}</span>
+     <span>Delivery ${esc(outputDate(m.delivery_date))} · <b>${esc(manualOrderStatus(o))}</b></span>
+     <span class="manual-badge ${m.needs_measurement_entry?'warning':'done'}">${m.needs_measurement_entry?'Measurements pending':'Measurements entered'}</span>
+     <span class="manual-badge ${m.manual_booklet_photo_path?'done':'warning'}">${m.manual_booklet_photo_path?'Booklet photo attached':'Booklet photo missing'}</span>
+    </div><div class="manual-import-row-actions">
+     <button type="button" class="btn alt" data-manual-edit="${esc(m.id)}">Edit / Attach Photo</button>
+     ${m.manual_booklet_photo_path?`<button type="button" class="btn alt" data-manual-photo="${esc(m.id)}">View Booklet</button>`:''}
+     <button type="button" class="btn" data-manual-print="${esc(m.id)}">Print GL Slip</button>
+    </div></article>`;
+ }).join('')||'<p class="muted">No imported booklet orders match.</p>';
+}
+function manualImportView(){
+ if(!(role==='admin'||role==='manager'))return '<div class="panel">Admin or Manager access required.</div>';
+ const all=measurements.filter(m=>m.imported_from_manual);
+ const ed=all.find(m=>m.id===manualEditingId);
+ const open=all.filter(m=>orders.some(o=>o.measurement_id===m.id&&o.status!=='delivered'));
+ const stats=[['Total imported',all.length],['Still open',open.length],['Measurements pending',all.filter(m=>m.needs_measurement_entry).length],['Booklet photos needed',all.filter(m=>!m.manual_booklet_photo_path).length],['Due or overdue',open.filter(m=>m.delivery_date<=today).length]];
+ const editor=ed?`<section class="panel manual-import-editor"><div class="manual-heading"><h3>Complete Imported Slip ${esc(ed.slip_no)}</h3><button class="btn alt" type="button" id="manualCancelEdit">Close</button></div>
+  <p class="muted">Original: ${esc(ed.manual_booklet_name)} / ${esc(ed.manual_slip_no)} · Bill ${esc(ed.bill_no)}. Previously billed: no new invoice.</p>
+  <form id="manualEditForm">
+   <div><label>Upload / replace booklet page photo</label><input type="file" name="manual_booklet_file" accept="image/*" capture="environment"><p class="muted">Private photo, up to 15 MB.</p></div>
+   <details ${ed.needs_measurement_entry?'open':''}><summary>Digital measurements</summary>${manualMeasurementsFields(ed)}</details>
+   <div class="fields"><div class="span"><label>Remarks</label><textarea name="remarks" maxlength="6000" rows="3">${esc(ed.remarks||'')}</textarea></div>
+   <div class="span"><label>Fitting instructions</label><textarea name="fitting_notes" maxlength="6000" rows="3">${esc(ed.fitting_notes||'')}</textarea></div>
+   <div class="span"><label class="manual-check"><input type="checkbox" name="needs_measurement_entry" ${ed.needs_measurement_entry?'checked':''}> Still needs full digital measurements</label></div></div>
+   <button type="submit" class="btn" id="manualEditSave">Save Measurements / Photo</button>
+  </form></section>`:'';
+ return `<div class="manual-overview">${stats.map(([label,value])=>`<div class="card"><b>${value}</b><small>${esc(label)}</small></div>`).join('')}</div>
+  ${manualLastImportedGL?`<div class="manual-import-success" role="status">Imported ${esc(manualLastImportedGL)} — original POS bill linked without billing again.</div>`:''}
+  ${editor}
+  <section class="panel"><h3>📖 Import Existing Manual Booklet Order</h3>
+   <p class="muted"><b>Not a new sale.</b> Enter the old booklet and POS bill numbers. Past delivery dates and existing commitments are accepted, and imported orders appear in Daily Deliveries and Master Room lists.</p>
+   <form id="manualImportForm" autocomplete="off"><div class="fields">
+    <div><label>Booklet / Register Name *</label><input required maxlength="100" name="manual_booklet_name" placeholder="Book 3 — Oct 2026"></div>
+    <div><label>Original Manual Slip No. *</label><input required maxlength="80" name="manual_slip_no" placeholder="4852"></div>
+    <div><label>Existing POS Bill Number *</label><input required maxlength="100" name="bill_no"></div>
+    <div><label>Customer Phone Number *</label><input required maxlength="30" type="tel" id="manualImportPhone" name="customer_phone"><p class="muted" id="manualImportPhoneStatus">Existing customers matched automatically.</p></div>
+    <div><label>Customer Name (if new)</label><input maxlength="120" id="manualImportCustomerName" name="customer_name"></div>
+    <div><label>Original Salesperson</label><input list="manualSalespeople" maxlength="120" name="salesperson_name"><datalist id="manualSalespeople">${salespeople.map(x=>`<option value="${esc(x.full_name)}"></option>`).join('')}</datalist></div>
+    <div><label>Original Order Date *</label><input required name="order_date" type="date" max="${esc(today)}" value="${esc(today)}"></div>
+    <div><label>Original Promised Delivery Date *</label><input required name="delivery_date" type="date"><p class="muted">Past dates are allowed and show as overdue.</p></div>
+    <div><label>Order Type</label><select name="order_type"><option value="self_alter">Self Alter</option><option value="new_make">New Make</option></select></div>
+    <div><label>Days Needed to Prepare</label><input required name="days_required" type="number" min="0" max="60" value="3"></div>
+    <div><label>Current Status</label><select name="current_status">
+      <option value="pending">Pending</option><option value="sent_master">Sent to Master Room</option>
+      <option value="stitching">Stitching</option><option value="alteration">Alteration</option>
+      <option value="trial">Trial</option><option value="ready">Ready for Collection</option>
+      <option value="delivered">Already Delivered</option></select></div>
+    <div><label>Original Total (₹, optional)</label><input name="final_billing_amount" type="number" min="0.01" step="0.01" max="9999999999.99"></div>
+    <div><label>Already Paid (₹, optional)</label><input name="paid_amount" type="number" min="0" step="0.01"></div>
+    <div><label>Photograph Handwritten Page</label><input name="manual_booklet_file" type="file" accept="image/*" capture="environment"><p class="muted">Recommended · maximum 15 MB · can attach later.</p></div>
+    <div class="span"><label>Original Remarks</label><textarea name="remarks" maxlength="6000" rows="3"></textarea></div>
+    <div class="span"><label>Fitting Instructions</label><textarea name="fitting_notes" maxlength="6000" rows="2"></textarea></div>
+    <div class="span"><label class="manual-check"><input type="checkbox" name="needs_measurement_entry" checked> Digital measurements to enter later</label></div>
+    <div class="span"><label class="manual-check"><input type="checkbox" name="whatsapp_opt_in"> Customer consented to future Ready-for-Collection WhatsApp updates</label>
+     <p class="muted">Historical order-confirmation WhatsApp is not sent on import.</p></div>
+   </div>
+   <details><summary>Optional: Enter digital measurements now</summary>${manualMeasurementsFields()}</details>
+   <button id="manualImportSave" class="btn" type="submit">Import Old Order & Assign GL Barcode</button>
+   </form></section>
+  <section class="panel"><div class="manual-heading"><h3>Imported Booklet Orders</h3><label>Filter <input type="search" id="manualImportSearch" value="${esc(manualImportSearch)}" placeholder="Phone, bill, old slip, GL slip"></label></div>
+   <p class="muted">${all.length} imported. Add photos and measurements at any time. Status updates remain in Dashboard / Daily Deliveries.</p>
+   <div id="manualImportRows">${manualImportRows()}</div></section>`;
+}
+async function uploadManualBookletPhoto(id,file){
+ if(!(file instanceof File)||!file.size)return null;
+ const mime=String(file.type||'').split(';')[0].toLowerCase();
+ const types={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/heic':'heic','image/heif':'heif'};
+ const ext=types[mime];
+ if(!ext)throw Error('Use JPG, PNG, WebP or HEIC for a booklet photo');
+ if(file.size>15728640)throw Error('Booklet photo must be 15 MB or smaller');
+ const path=id+'/manual-'+crypto.randomUUID()+'.'+ext;
+ const {error:err}=await sb.storage.from('galoir-measurement-media').upload(path,file,{contentType:mime,upsert:false});
+ if(err)throw err;
+ const {error:linkError}=await sb.rpc('update_imported_booklet_photo',{p_measurement_id:id,p_path:path});
+ if(linkError)throw linkError;
+ return path;
+}
+async function openManualBookletPhoto(m){
+ if(!m?.manual_booklet_photo_path)return notify('No booklet photo attached');
+ const win=window.open('about:blank','_blank');
+ try{
+  const {data,error:e}=await sb.storage.from('galoir-measurement-media').createSignedUrl(m.manual_booklet_photo_path,900);
+  if(e||!data?.signedUrl)throw e||Error('Cannot load photo');
+  if(win)win.location.href=data.signedUrl;else notify('Enable pop-ups to view the booklet photo');
+ }catch(e){win?.close();error(e)}
+}
 function dashboardView(){
  const due=deliveriesToday(),master=masterRoomToday();
  const delivered=due.filter(o=>o.status==='delivered').length;
  const sent=master.filter(o=>o.master_room_sent_at).length;
  const overdueDelivery=orders.filter(o=>o.delivery_date<today&&o.status!=='delivered').length;
  return `${can('measurements')?`<div class="dashboard-top-actions"><button class="btn dashboard-new-measurement" type="button" id="dashboardNewMeasurement" aria-label="Create new measurement slip"><span class="dashboard-plus-icon" aria-hidden="true">+</span> New Measurement</button></div>`:''}
+ ${canImportManual()?`<div class="dashboard-manual-action"><button type="button" class="btn alt" id="dashboardImportManual">📖 + Import Manual Order</button></div>`:''}
  <section class="panel status-lookup-panel">
   <h3>Search Customer / Slip / Bill Status</h3>
   <p class="muted">Enter a customer phone number, GL slip number, or exact bill number to check whether the outfit is ready, sent to the master room, or not yet due.</p>
@@ -1078,6 +1193,7 @@ async function startReadyCamera(){
  }
 }
 function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();bindColoredCalendars();bindPreparationWarnings();
+ on('dashboardImportManual','click',()=>{if(!canImportManual())return;manualEditingId=null;tab='manual_import';render();window.scrollTo?.({top:0,behavior:'smooth'})});
  on('dashboardNewMeasurement','click',()=>{
   if(!can('measurements'))return notify('Your account cannot create measurement slips');
   stopBarcodeScan();stopReadyCamera();
