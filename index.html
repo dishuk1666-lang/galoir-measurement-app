@@ -325,4 +325,26 @@
 .slip-history-stats .card strong{font-size:19px}
 #slipHistorySearch{max-width:none}
 }
+
+/* Admin-only corrections for customer details and existing tailor slips. */
+.admin-edit-picker h3,.admin-edit-card h3{margin:0 0 10px}
+.admin-edit-selectors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-top:16px}
+.admin-edit-selectors label{min-width:0;display:flex;flex-direction:column;gap:7px;font-weight:700}
+.admin-edit-selectors select{width:100%;min-width:0;max-width:100%;font-size:15px}
+.admin-edit-title{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}
+.admin-edit-title .actions{display:flex;gap:8px;flex-wrap:wrap}
+.admin-edit-card .manual-measure-group{border:1px solid #e2d9cb;border-radius:10px;padding:12px;margin:12px 0;background:#fff}
+.admin-edit-card .manual-measure-group h4{margin:0 0 12px}
+.admin-edit-photo{border:1px solid #d9c8b1;border-radius:9px;padding:14px;background:#fcfaf6}
+.admin-edit-photo .btn{margin-left:8px}
+.admin-edit-card form>button[type=submit]{min-height:46px;margin-top:14px}
+.admin-edit-card form .fields input[type=checkbox]{width:auto;min-width:auto;height:18px;vertical-align:middle;margin-right:5px}
+@media(max-width:750px){
+ .admin-edit-selectors{grid-template-columns:1fr}
+ .admin-edit-title{flex-direction:column}
+ .admin-edit-title .actions{width:100%}
+ .admin-edit-card form>button[type=submit]{width:100%}
+ .dashboard-top-actions{flex-wrap:wrap;gap:10px}
+ #dashboardAdminEdit{min-height:46px}
+}
 </style></head><body><div id="login"><h1>GALOIR</h1><p class="muted">Measurement & Delivery Studio · Secure Staff Login</p><div id="setupWarning" class="muted"></div><form id="loginForm"><label>Email</label><input type="email" id="email" autocomplete="username" required><label>Password</label><input type="password" id="password" autocomplete="current-password" required><button class="btn" style="width:100%">Sign in</button></form><p class="muted">Accounts are created by your GALOIR administrator.</p></div><div id="app" class="hidden"><aside><h1>GALOIR</h1><small>MEASUREMENT STUDIO</small><nav id="nav"></nav></aside><main><div class="top"><div><div class="eyebrow" id="subtitle">STORE OPERATIONS</div><h2 id="heading">Dashboard</h2></div><div class="actions"><span id="who" class="pill"></span><button id="logout" class="btn alt">Sign out</button></div></div><div id="view"></div></main></div><div id="notice" class="hidden"></div><script src="/config.js"></script><script type="module" src="/v3.js"></script></body></html>
