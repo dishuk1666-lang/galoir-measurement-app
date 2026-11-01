@@ -11,9 +11,9 @@ function maskCustomerPhone(value){
 }
 function phoneForDisplay(value){return role==='sales'?maskCustomerPhone(value):String(value||'—')}
 const dateStr=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,manualEditingId=null,manualImportSearch='',manualLastImportedGL='',recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',slipHistoryData=null,slipHistoryFilter='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
-const allowed={admin:['dashboard','measurements','slip_history','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','slip_history','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
-const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',slip_history:'Slip History',manual_import:'Manual Booklet Orders',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
+let today=dateStr(new Date());let me=null,role=null,tab='dashboard',customers=[],measurements=[],orders=[],profiles=[],salespeople=[],capacity=20,lastCreated=null,lastBilledSlipId=null,editingDraftId=null,adminEditTargetType='slip',adminEditTargetId=null,manualEditingId=null,manualImportSearch='',manualLastImportedGL='',recordedAudio=null,activeRecorder=null,recordingStream=null,lastReadyScanResult=null,statusSearchQuery='',slipHistoryData=null,slipHistoryFilter='',waEnabled=false,waNotifications=[],waConfiguration=null,waDispatchLast=0,waDispatchBusy=false,month=new Date(),selectedDate=today;
+const allowed={admin:['dashboard','measurements','admin_edit','slip_history','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','salespeople','staff','reports'],manager:['dashboard','measurements','slip_history','manual_import','scanner','alerts','customers','cashier','calendar','daily','tailoring','settings','reports'],sales:['dashboard','measurements','scanner','alerts','customers','cashier','calendar','daily'],tailoring:['dashboard','measurements','scanner','alerts','customers','daily','tailoring']};
+const titles={dashboard:'Dashboard',scanner:'Scan Ready Outfit',alerts:'Reminders',customers:'Customers',measurements:'Measurements',slip_history:'Slip History',admin_edit:'Admin Edit',manual_import:'Manual Booklet Orders',cashier:'Billing Desk',calendar:'Delivery Calendar',daily:'Daily Deliveries',tailoring:'Tailoring Board',settings:'Capacity Settings',salespeople:'Salespeople',staff:'Staff Management',reports:'Reports'};
 const can=a=>({admin:['customers','measurements','bookings','daily','tailoring','capacity','reports','staff'],manager:['customers','measurements','bookings','daily','tailoring','capacity','reports'],sales:['customers','measurements','bookings','daily'],tailoring:['daily','tailoring']}[role]||[]).includes(a);
 function notify(s){$('notice').textContent=s;$('notice').classList.remove('hidden');setTimeout(()=>$('notice').classList.add('hidden'),4500)}
 function error(e){notify('Error: '+(e?.message||e));console.error(e)}
@@ -63,7 +63,7 @@ function render(){if(!role)return;const menu=allowed[role]||[];
     !measurements.some(m=>m.id===editingDraftId&&m.workflow_status==='draft')){
    clearMeasurementRecovery();editingDraftId=null;
    notify('This draft is no longer editable. Start a new slip if needed.');
- }if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(tab==='measurements')captureMeasurementRecovery();stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,manual_import:manualImportView,slip_history:slipHistoryView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
+ }if(!menu.includes(tab))tab=menu[0]||'daily';$('heading').textContent=titles[tab];$('who').textContent=`${esc(me.email)} · ${role}`;$('nav').innerHTML=menu.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${titles[x]}</button>`).join('');$('nav').querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(tab==='measurements')captureMeasurementRecovery();stopBarcodeScan();stopReadyCamera();tab=b.dataset.tab;try{await refresh()}catch(x){error(x)}});const f={dashboard:dashboardView,scanner:readyScannerView,alerts:alertsView,customers:customersView,measurements:measurementsView,admin_edit:adminEditView,manual_import:manualImportView,slip_history:slipHistoryView,cashier:cashierView,calendar:calendarView,daily:dailyView,tailoring:tailoringView,settings:settingsView,salespeople:salespeopleView,staff:staffView,reports:reportsView};$('view').innerHTML=f[tab]();bind()}
 function masterRoomDate(o){
  const delivery=Date.parse(String(o.delivery_date||'')+'T00:00:00Z');
  if(!Number.isFinite(delivery))return '';
@@ -521,6 +521,160 @@ function slipCode39Svg(raw){
 function ordersTable(rows){return `<table><thead><tr><th>Customer / Slip</th><th>Outfit / Type</th><th>Delivery</th><th>Status</th><th>CRM Ready</th><th>Supplier Follow-up</th></tr></thead><tbody>${rows.length?rows.map(o=>{const slip=measurements.find(m=>m.id===o.measurement_id)?.slip_no||'—';return `<tr><td>${esc(customerName(o.customer_id))}<br><strong>${esc(slip)}</strong></td><td>${esc(o.item_name)}<br><span class="muted">${o.order_type==='new_make'?'New Make':'Self Alter'}</span></td><td>${esc(outputDate(o.delivery_date))}</td><td><span class="pill">${esc(o.status)}</span></td><td><label><input type="checkbox" data-ready-id="${esc(o.id)}" ${o.is_ready?'checked':''} style="width:auto"> Ready</label></td><td>${o.order_type==='new_make'?`<button type="button" class="btn alt" data-supplier-id="${esc(o.id)}">${o.supplier_notified_at?'✓ Supplier informed':'Mark supplier informed'}</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="6">No records</td></tr>'}</tbody></table>`}
 function alertsView(){return `<div class="panel"><h3>New Make · Contact supplier 2 days before delivery</h3><p class="muted">These reminders appear from 2 days before delivery until marked Supplier Informed or Ready.</p>${ordersTable(supplierAlerts())}</div><div class="panel"><h3>Self Alter · Put on alteration / prepare</h3><p class="muted">Reminders begin the selected number of preparation days before delivery.</p>${ordersTable(alterationAlerts())}</div>`}
 function customerOptions(){return customers.map(c=>`<option value="${c.id}">${esc(c.full_name)} — ${esc(phoneForDisplay(c.phone))}</option>`).join('')}
+function goToAdminEdit(kind,id){
+ if(role!=='admin')return notify('Only Admin can edit saved customers and tailor slips');
+ if(!['customer','slip'].includes(kind))return;
+ if(id&&!(kind==='customer'?customers:measurements).some(x=>x.id===id))return notify('Record no longer exists. Refresh first.');
+ adminEditTargetType=kind;adminEditTargetId=id||null;tab='admin_edit';render();
+ if(typeof window.scrollTo==='function')window.scrollTo({top:0,behavior:'smooth'});
+}
+function adminEditView(){
+ if(role!=='admin')return '<div class="panel">Admin access required.</div>';
+ const c=adminEditTargetType==='customer'?customers.find(x=>x.id===adminEditTargetId):null;
+ const m=adminEditTargetType==='slip'?measurements.find(x=>x.id===adminEditTargetId):null;
+ const customerOptions=customers.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(x=>
+  `<option value="${esc(x.id)}" ${c?.id===x.id?'selected':''}>${esc(x.full_name)} · ${esc(x.phone)}</option>`).join('');
+ const slipOptions=measurements.slice().sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))).map(x=>{
+  const customer=customers.find(y=>y.id===x.customer_id);
+  return `<option value="${esc(x.id)}" ${m?.id===x.id?'selected':''}>${esc(x.slip_no||'—')} · ${esc(customer?.full_name||'Customer')} · Bill ${esc(x.bill_no||'Draft')}</option>`;
+ }).join('');
+ const customerForm=c?`<div class="panel admin-edit-card">
+  <h3>Edit Customer · ${esc(c.full_name)}</h3>
+  <p class="muted">Correcting the name or phone updates the customer profile linked to existing slips. It does not create an order or resend WhatsApp messages.</p>
+  <form id="adminCustomerEditForm">
+   <input type="hidden" name="expected_updated_at" value="${esc(c.updated_at)}">
+   <div class="fields">
+    <div><label>Customer Full Name *</label><input name="full_name" maxlength="120" value="${esc(c.full_name)}" required></div>
+    <div><label>Customer Phone Number *</label><input name="phone" type="tel" maxlength="30" value="${esc(c.phone)}" required></div>
+    <div class="span"><label>Customer Notes</label><textarea name="notes" rows="4" maxlength="4000">${esc(c.notes||'')}</textarea></div>
+   </div>
+   <p class="muted">A number already used by another customer is not accepted. Reload if another session edited this customer.</p>
+   <button type="submit" class="btn">Save Customer Changes</button>
+  </form>
+ </div>`:'';
+ const related=m?customers.find(x=>x.id===m.customer_id):null;
+ const slipForm=m?`<div class="panel admin-edit-card">
+  <div class="admin-edit-title"><div><h3>Edit Tailor Slip · ${esc(m.slip_no)}</h3>
+   <p class="muted">${esc(related?.full_name||'Customer')} · ${esc(related?.phone||'—')}</p></div>
+   <div class="actions">${related?'<button type="button" class="btn alt" id="adminEditLinkedCustomer">Edit Customer</button>':''}
+    ${m.workflow_status==='billed'&&m.bill_no?`<button type="button" class="btn alt" data-print="${esc(m.id)}">View / Print Current Slip</button>`:''}</div>
+  </div>
+  <p class="muted">GL ${esc(m.slip_no)} · Stage: ${esc(m.workflow_status)} · Bill ${esc(m.bill_no||'Not billed')} · ${m.order_type==='new_make'?'New Make':'Self Alter'}.
+  ${m.final_billing_amount!=null?`Total ${formatInr(m.final_billing_amount)}. `:''}
+  <b>GL number, bill, billing amounts, order type and readiness status are protected.</b></p>
+  <form id="adminSlipEditForm">
+   <input type="hidden" name="expected_updated_at" value="${esc(m.updated_at)}">
+   <div class="fields">
+    <div><label>Original Order Date</label><input name="order_date" type="date" value="${esc(m.order_date||'')}"></div>
+    <div><label>Delivery Date ${m.workflow_status==='billed'?'*':''}</label><input name="delivery_date" type="date" value="${esc(m.delivery_date||'')}" ${m.workflow_status==='billed'?'required':''}></div>
+    <div><label>Preparation Days *</label><input name="days_required" type="number" min="0" max="60" step="1" value="${esc(m.days_required??2)}" required></div>
+    <div><label>Salesperson</label><input name="salesperson_name" list="adminEditSalesList" maxlength="120" value="${esc(m.salesperson_name||'')}">
+     <datalist id="adminEditSalesList">${salespeople.map(x=>`<option value="${esc(x.full_name)}"></option>`).join('')}</datalist></div>
+    <div><label>Company</label><input name="company_name" maxlength="120" value="${esc(m.company_name||'')}"></div>
+    <div><label>Reviewed By</label><input name="reviewed_by" maxlength="120" value="${esc(m.reviewed_by||'')}"></div>
+    <div><label>Design Number</label><input name="design_number" maxlength="100" value="${esc(m.design_number||'')}"></div>
+    <div><label>Product Barcode</label><input name="product_barcode" maxlength="120" value="${esc(m.product_barcode||'')}"></div>
+    <div><label>Measurement Type</label><select name="ready_body"><option value="body" ${m.ready_body!=='ready'?'selected':''}>Body</option><option value="ready" ${m.ready_body==='ready'?'selected':''}>Ready</option></select></div>
+    <div class="span"><label>Items to Deliver</label><div class="actions">
+      <label><input type="checkbox" name="deliver_top" ${m.deliver_top?'checked':''}> Top</label>
+      <label><input type="checkbox" name="deliver_bottom" ${m.deliver_bottom?'checked':''}> Bottom</label>
+      <label><input type="checkbox" name="deliver_dupatta" ${m.deliver_dupatta?'checked':''}> Dupatta</label>
+    </div></div>
+   </div>
+   <h3>Correct Measurements (19 fields)</h3>
+   ${manualMeasurementsFields(m)}
+   <div class="fields">
+    <div class="span"><label>Remarks / Alterations</label><textarea name="remarks" maxlength="6000" rows="4">${esc(m.remarks||'')}</textarea></div>
+    <div class="span"><label>Fitting Instructions</label><textarea name="fitting_notes" maxlength="6000" rows="3">${esc(m.fitting_notes||'')}</textarea></div>
+    <div class="span admin-edit-photo"><label>Reference Photo</label>
+     ${m.photo_path?`<p class="muted">Image attached. <button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">View Existing Photo</button></p>`:'<p class="muted">No reference photo attached yet.</p>'}
+     <input name="reference_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment">
+     <p class="muted">Optional replacement: JPG, PNG, WebP or HEIC (maximum 15 MB).</p>
+     ${m.photo_path?'<label><input type="checkbox" name="remove_photo"> Remove existing photo from this slip</label>':''}
+    </div>
+   </div>
+   <p class="muted">Delivery date and preparation-day corrections also update the linked order. No new bill or WhatsApp confirmation is generated. All edits are logged.</p>
+   <button type="submit" class="btn">Save Tailor Slip Changes</button>
+  </form>
+ </div>`:'';
+ return `<section class="panel admin-edit-picker">
+  <h3>✎ Admin Edit · Customers & Tailor Slips</h3>
+  <p class="muted">Correct saved customers and tailor slips, including billed slips. Each edit is logged and another session's changes cannot be silently overwritten.</p>
+  <div class="admin-edit-selectors">
+   <label><span>Select Customer</span><select id="adminEditCustomerSelect"><option value="">Choose a customer...</option>${customerOptions}</select></label>
+   <label><span>Select GL Tailor Slip</span><select id="adminEditSlipSelect"><option value="">Choose a saved slip...</option>${slipOptions}</select></label>
+  </div>
+ </section>
+ ${customerForm||slipForm||'<div class="panel"><p class="muted">Choose a customer or GL slip above, or use Edit Customer / Edit Tailor Slip from the Customers, Measurements or Dashboard search results.</p></div>'}`;
+}
+async function adminUploadReferencePhoto(m,file){
+ if(!file||!file.size)return null;
+ const mime=String(file.type||'').split(';')[0].toLowerCase();
+ const formats={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/heic':'heic','image/heif':'heif'};
+ const ext=formats[mime];
+ if(!ext)throw Error('Choose a JPG, PNG, WebP or HEIC reference photo');
+ if(file.size>15728640)throw Error('Reference photo must be 15 MB or smaller');
+ const path=m.id+'/photo-'+crypto.randomUUID()+'.'+ext;
+ const {error:e}=await sb.storage.from('galoir-measurement-media').upload(path,file,{contentType:mime,upsert:false});
+ if(e)throw e;
+ return path;
+}
+async function submitAdminCustomerEdit(e){
+ e.preventDefault();
+ if(role!=='admin')throw Error('Only Admin may edit customers');
+ const c=customers.find(x=>x.id===adminEditTargetId);
+ if(!c)throw Error('Customer not found. Refresh and select again.');
+ const form=e.currentTarget||e.target,fd=new FormData(form);
+ const button=form.querySelector('button[type="submit"]');if(button)button.disabled=true;
+ try{
+  const {data,error:e}=await sb.rpc('admin_edit_galoir_customer',{
+    p_customer_id:c.id,p_full_name:String(fd.get('full_name')||'').trim(),
+    p_phone:String(fd.get('phone')||'').trim(),p_notes:String(fd.get('notes')||''),
+    p_expected_updated_at:String(fd.get('expected_updated_at')||'')
+  });
+  if(e)throw e;
+  await refresh();notify('Customer details saved. '+data.full_name+' updated on linked slips.');
+ }finally{if(button?.isConnected)button.disabled=false}
+}
+async function submitAdminSlipEdit(e){
+ e.preventDefault();
+ if(role!=='admin')throw Error('Only Admin may edit tailor slips');
+ const m=measurements.find(x=>x.id===adminEditTargetId);
+ if(!m)throw Error('Tailor slip not found. Refresh and select again.');
+ const form=e.currentTarget||e.target,fd=new FormData(form);
+ const button=form.querySelector('button[type="submit"]');if(button)button.disabled=true;
+ try{
+  const values={};
+  for(const [group,items] of Object.entries(measureGroups)){
+   for(const name of items){const key=group+' / '+name;values[key]=String(fd.get('m_'+key)||'').trim();}
+  }
+  const days=Number(fd.get('days_required'));
+  const delivery=String(fd.get('delivery_date')||''),orderDate=String(fd.get('order_date')||'');
+  if(!Number.isInteger(days)||days<0||days>60)throw Error('Preparation days must be 0–60');
+  if(m.workflow_status==='billed'&&!delivery)throw Error('Billed slips must keep a delivery date');
+  if(orderDate&&delivery&&delivery<orderDate)throw Error('Delivery cannot be before the order date');
+  const remove=fd.has('remove_photo'),file=fd.get('reference_photo');
+  if(remove&&file?.size>0)throw Error('Choose either a replacement photo or removal, not both');
+  const payload={
+   values,remarks:String(fd.get('remarks')||''),fitting_notes:String(fd.get('fitting_notes')||''),
+   salesperson_name:String(fd.get('salesperson_name')||''),
+   company_name:String(fd.get('company_name')||''),reviewed_by:String(fd.get('reviewed_by')||''),
+   order_date:orderDate,delivery_date:delivery,days_required:days,
+   design_number:String(fd.get('design_number')||''),product_barcode:String(fd.get('product_barcode')||''),
+   ready_body:String(fd.get('ready_body')||'body'),
+   deliver_top:fd.has('deliver_top'),deliver_bottom:fd.has('deliver_bottom'),
+   deliver_dupatta:fd.has('deliver_dupatta')
+  };
+  if(file?.size>0)payload.photo_path=await adminUploadReferencePhoto(m,file);
+  else if(remove)payload.photo_path='';
+  const {data,error:e}=await sb.rpc('admin_edit_galoir_tailor_slip',{
+   p_measurement_id:m.id,p_payload:payload,
+   p_expected_updated_at:String(fd.get('expected_updated_at')||'')
+  });
+  if(e)throw e;
+  await refresh();notify('Tailor slip '+data.slip_no+' corrected. Print again to see the updated details.');
+ }finally{if(button?.isConnected)button.disabled=false}
+}
 function customersView(){return `${can("customers") ? `<div class="panel"><h3>Add customer</h3><form id="customerForm"><div class="fields"><div><label>Full name</label><input name="full_name" required maxlength="120"></div><div><label>Phone</label><input name="phone" required maxlength="30"></div><div class="span"><label>Notes</label><textarea name="notes" rows="2"></textarea></div></div><button class="btn">Save Customer</button></form></div>` : ""}<div class="panel"><h3>Customer profiles</h3><input id="searchCustomers"><div id="customerRows">${customerTable(customers)}</div></div>`}
 function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(phoneForDisplay(c.phone))}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
 // Reuse the original Lehenga / Sharara storage keys to keep old slips compatible.
