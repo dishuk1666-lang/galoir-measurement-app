@@ -172,6 +172,8 @@ function statusLookupResults(query){
    </div><p class="status-description">${esc(state.note)}${o&&due>=today&&o.status!=='delivered'?' This is the booked delivery date, subject to outfit readiness.':''}</p>
    ${m?`<div class="status-result-actions">
     <button type="button" class="btn alt" data-status-view="${esc(m.id)}">View Measurements</button>
+    ${role==='admin'?`<button type="button" class="btn alt" data-admin-slip="${esc(m.id)}">Edit Tailor Slip</button>`:''}
+    ${role==='admin'&&c?.id?`<button type="button" class="btn alt" data-admin-customer="${esc(c.id)}">Edit Customer</button>`:''}
     ${m.photo_path?`<button type="button" class="btn alt" data-status-photo="${esc(m.id)}">View Photo</button>`:''}
     ${m.manual_booklet_photo_path?`<button type="button" class="btn alt" data-status-booklet="${esc(m.id)}">View Booklet Page</button>`:''}
     ${m.workflow_status==='billed'&&m.bill_no?`<button type="button" class="btn" data-status-print="${esc(m.id)}">View / Print A4 Slip</button>`:''}
@@ -433,7 +435,8 @@ function dashboardView(){
  const delivered=due.filter(o=>o.status==='delivered').length;
  const sent=master.filter(o=>o.master_room_sent_at).length;
  const overdueDelivery=orders.filter(o=>o.delivery_date<today&&o.status!=='delivered').length;
- return `${can('measurements')?`<div class="dashboard-top-actions"><button class="btn dashboard-new-measurement" type="button" id="dashboardNewMeasurement" aria-label="Create new measurement slip"><span class="dashboard-plus-icon" aria-hidden="true">+</span> New Measurement</button></div>`:''}
+ return `${can('measurements')?`<div class="dashboard-top-actions"><button class="btn dashboard-new-measurement" type="button" id="dashboardNewMeasurement" aria-label="Create new measurement slip"><span class="dashboard-plus-icon" aria-hidden="true">+</span> New Measurement</button>
+ ${role==='admin'?'<button type="button" class="btn alt" id="dashboardAdminEdit">✎ Admin Edit</button>':''}</div>`:''}
  ${canImportManual()?`<div class="dashboard-manual-action"><button type="button" class="btn alt" id="dashboardImportManual">📖 + Import Manual Order</button></div>`:''}
  <section class="panel status-lookup-panel">
   <h3>Search Customer / Slip / Bill Status</h3>
@@ -676,7 +679,7 @@ async function submitAdminSlipEdit(e){
  }finally{if(button?.isConnected)button.disabled=false}
 }
 function customersView(){return `${can("customers") ? `<div class="panel"><h3>Add customer</h3><form id="customerForm"><div class="fields"><div><label>Full name</label><input name="full_name" required maxlength="120"></div><div><label>Phone</label><input name="phone" required maxlength="30"></div><div class="span"><label>Notes</label><textarea name="notes" rows="2"></textarea></div></div><button class="btn">Save Customer</button></form></div>` : ""}<div class="panel"><h3>Customer profiles</h3><input id="searchCustomers"><div id="customerRows">${customerTable(customers)}</div></div>`}
-function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th></tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(phoneForDisplay(c.phone))}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td></tr>`).join('')}</table>`}
+function customerTable(rows){return `<table><tr><th>Name</th><th>Phone</th><th>Measurements</th>${role==='admin'?'<th>Admin</th>':''}</tr>${rows.map(c=>`<tr><td>${esc(c.full_name)}</td><td>${esc(phoneForDisplay(c.phone))}</td><td>${measurements.filter(m=>m.customer_id===c.id).length}</td>${role==='admin'?`<td><button type="button" class="btn alt" data-admin-customer="${esc(c.id)}">Edit Customer</button></td>`:''}</tr>`).join('')}</table>`}
 // Reuse the original Lehenga / Sharara storage keys to keep old slips compatible.
 const measureGroups={"Top / Ready / Body":["Length","Upper Chest","Chest","Waist/Tummy","Hip","Shoulder","Armhole","Sleeves","Front Neck","Back Neck","Ghera","Back Darts","Dart Point","Chak/Slit"],"Lehenga / Sharara":["Length","Waist","Hip/Knee","Flair","Thigh"]};
 function measurementGroupDisplayName(group){return group==='Lehenga / Sharara'?'Lehenga / Sharara / Saree / Pant':group}
@@ -935,7 +938,8 @@ function measurementTable(rows){
   return `<tr><td><strong>${esc(m.slip_no||'—')}</strong>
     ${m.imported_from_manual?`<br><small class="muted">Manual ${esc(m.manual_booklet_name)} / ${esc(m.manual_slip_no)}</small>`:''}
     <br><span class="pill">${isBilled?'Billed':'Draft'}</span></td><td>${esc(c?.full_name||'Customer')}<br><span class="muted">${esc(phoneForDisplay(c?.phone))}</span></td><td>${esc(m.item_name||'Not entered')}<br><span class="muted">Design: ${esc(m.design_number||'—')}</span><br><span class="muted">Barcode: ${esc(m.product_barcode||'—')}</span></td><td>${esc(m.salesperson_name||'—')}</td><td>${esc(outputDate(m.delivery_date))}</td><td>${esc(m.bill_no||'Pending billing')}</td><td>${m.final_billing_amount==null?'—':'₹'+esc(Number(m.final_billing_amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td><td><div class="actions">${isBilled?`<button type="button" class="btn alt" data-print="${esc(m.id)}">Print</button>`:`${can('measurements')?`<button type="button" class="btn alt" data-edit-draft="${esc(m.id)}">Continue draft</button><button type="button" class="btn" data-open-cashier="${esc(m.id)}">Bill</button>`:''}`}
-  ${deletable?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Draft</button>`:''}
+  ${role==='admin'?`<button type="button" class="btn alt" data-admin-slip="${esc(m.id)}">Edit Tailor Slip</button>`:''}
+   ${deletable?`<button type="button" class="btn danger-outline" data-delete-draft="${esc(m.id)}">Delete Draft</button>`:''}
   ${m.photo_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="photo">Photo</button>`:''}${m.voice_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="voice">Voice</button>`:''}${m.video_path?`<button type="button" class="btn alt" data-media="${esc(m.id)}" data-kind="video">Video</button>`:''}</div><details><summary>Measurements</summary><pre>${esc(JSON.stringify(m.values,null,2))}</pre><p class="muted">${esc(m.remarks||'')}</p></details></td></tr>`;
  }).join('')}</table>`;
 }
@@ -1567,7 +1571,15 @@ async function startReadyCamera(){
   if(status)status.textContent='Camera scanner unavailable: '+(e.message||e)+'. Use a handheld barcode scanner or type the GL number.';
  }
 }
-function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();on('reloadSlipHistory','click',async()=>{try{const {data,error:e}=await sb.rpc('get_galoir_slip_history');if(e)throw e;slipHistoryData=data;render()}catch(e){error(e)}});on('slipHistorySearch','input',e=>{slipHistoryFilter=e.target.value;const q=slipHistoryFilter.trim().toLowerCase();const rows=(slipHistoryData?.events||[]).filter(x=>!q||[x.slip_no,x.event_type,x.customer_name,x.performed_by,x.bill_no,x.workflow_status].some(v=>String(v||'').toLowerCase().includes(q)));if($('slipHistoryRows'))$('slipHistoryRows').innerHTML=slipHistoryRows(rows)});bindColoredCalendars();bindPreparationWarnings();
+function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListener(event,fn)};bindSharedActions();
+ on('adminEditCustomerSelect','change',e=>{if(e.target.value)goToAdminEdit('customer',e.target.value)});
+ on('adminEditSlipSelect','change',e=>{if(e.target.value)goToAdminEdit('slip',e.target.value)});
+ on('adminCustomerEditForm','submit',e=>{submitAdminCustomerEdit(e).catch(error)});
+ on('adminSlipEditForm','submit',e=>{submitAdminSlipEdit(e).catch(error)});
+ on('adminEditLinkedCustomer','click',()=>{const m=measurements.find(x=>x.id===adminEditTargetId);if(m)goToAdminEdit('customer',m.customer_id)});
+ on('customerRows','click',e=>{const el=e.target?.closest?.('[data-admin-customer]');if(el)goToAdminEdit('customer',el.dataset.adminCustomer)});
+ on('measurementRows','click',e=>{const el=e.target?.closest?.('[data-admin-slip]');if(el)goToAdminEdit('slip',el.dataset.adminSlip)});
+ on('dashboardAdminEdit','click',()=>goToAdminEdit('slip',null));on('reloadSlipHistory','click',async()=>{try{const {data,error:e}=await sb.rpc('get_galoir_slip_history');if(e)throw e;slipHistoryData=data;render()}catch(e){error(e)}});on('slipHistorySearch','input',e=>{slipHistoryFilter=e.target.value;const q=slipHistoryFilter.trim().toLowerCase();const rows=(slipHistoryData?.events||[]).filter(x=>!q||[x.slip_no,x.event_type,x.customer_name,x.performed_by,x.bill_no,x.workflow_status].some(v=>String(v||'').toLowerCase().includes(q)));if($('slipHistoryRows'))$('slipHistoryRows').innerHTML=slipHistoryRows(rows)});bindColoredCalendars();bindPreparationWarnings();
  on('manualImportForm','submit',e=>{submitManualImport(e).catch(error)});
  on('manualEditForm','submit',e=>{submitManualEdit(e).catch(error)});
  on('manualCancelEdit','click',()=>{manualEditingId=null;render()});
@@ -1608,8 +1620,10 @@ function bind(){const on=(id,event,fn)=>{const el=$(id);if(el)el.addEventListene
  on('statusSearchClear','click',()=>{statusSearchQuery='';if($('statusSearchInput')){$('statusSearchInput').value='';$('statusSearchInput').focus()}if($('statusSearchResults'))$('statusSearchResults').innerHTML=statusLookupResults('')});
  // Delegated handler survives a fresh search that replaces result cards.
  on('statusSearchResults','click',e=>{
-  const el=e.target?.closest?.('[data-status-photo], [data-status-booklet], [data-status-view], [data-status-print]');
+  const el=e.target?.closest?.('[data-admin-slip], [data-admin-customer], [data-status-photo], [data-status-booklet], [data-status-view], [data-status-print]');
   if(!el)return;
+  if(el.hasAttribute('data-admin-slip'))return goToAdminEdit('slip',el.dataset.adminSlip);
+  if(el.hasAttribute('data-admin-customer'))return goToAdminEdit('customer',el.dataset.adminCustomer);
   const id=el.dataset.statusPhoto||el.dataset.statusBooklet||el.dataset.statusView||el.dataset.statusPrint;
   const m=measurements.find(x=>x.id===id);
   if(!m)return notify('Measurement slip not found. Refresh the dashboard and try again.');
